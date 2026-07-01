@@ -1,0 +1,41 @@
+{
+  "name": "dia-cdp",
+  "version": "0.1.0",
+  "description": "Dia browser CDP tools and Codex skill for inspecting the user's Dia session.",
+  "author": {
+    "name": "Seongho",
+    "url": "https://github.com/psh4607"
+  },
+  "homepage": "https://github.com/psh4607/dia-cdp",
+  "repository": "https://github.com/psh4607/dia-cdp",
+  "license": "MIT",
+  "keywords": [
+    "dia",
+    "cdp",
+    "chrome-devtools-protocol",
+    "browser",
+    "codex",
+    "skills"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Dia CDP",
+    "shortDescription": "Inspect Dia browser tabs through CDP.",
+    "longDescription": "Dia CDP packages a Dia-focused Chrome DevTools Protocol CLI and a Codex skill for inspecting, capturing, debugging, and interacting with pages open in the user's Dia browser session.",
+    "developerName": "Seongho",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write",
+      "Local browser"
+    ],
+    "websiteURL": "https://github.com/psh4607/dia-cdp",
+    "brandColor": "#0F766E",
+    "defaultPrompt": [
+      "Dia에 열린 탭 목록을 확인해줘.",
+      "Dia에서 지금 보고 있는 페이지를 캡처해줘.",
+      "Dia 세션으로 이 페이지를 디버깅해줘."
+    ]
+  }
+}

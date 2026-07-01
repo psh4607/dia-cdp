@@ -1,16 +1,20 @@
 {
   "name": "dia-cdp",
   "version": "0.1.0",
-  "description": "Standalone Dia browser CDP CLI.",
+  "description": "Dia browser CDP CLI packaged as a Codex plugin.",
   "type": "module",
-  "private": true,
-  "license": "UNLICENSED",
+  "private": false,
+  "license": "MIT",
   "bin": {
     "dia-cdp": "bin/dia-cdp"
   },
   "files": [
+    ".agents",
+    ".codex-plugin",
     "bin",
+    "skills",
     "src",
+    "LICENSE",
     "README.md"
   ],
   "scripts": {

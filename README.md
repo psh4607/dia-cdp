@@ -1,11 +1,30 @@
 # dia-cdp
 
-Standalone CDP CLI for the Dia browser on macOS.
+Standalone CDP CLI and Codex plugin for the Dia browser on macOS.
 
 This project is a Dia-focused fork of a lightweight raw Chrome DevTools Protocol
 CLI. It does not depend on Codex's bundled `chrome-cdp` skill directory.
 
-## Install
+## Codex Plugin Install
+
+Install from the public marketplace repo:
+
+```bash
+codex plugin marketplace add psh4607/dia-cdp --ref main
+codex plugin add dia-cdp@dia-cdp
+```
+
+Verify:
+
+```bash
+codex plugin list --json | jq '.installed[] | select(.pluginId == "dia-cdp@dia-cdp")'
+```
+
+The plugin ships the `dia-cdp` skill and a skill-local `scripts/dia-cdp`
+wrapper, so Codex agents can use the bundled CLI from the installed plugin
+cache without depending on the old `chrome-cdp` skill.
+
+## CLI Install
 
 Use the project wrapper directly:
 
@@ -72,9 +91,9 @@ dia-cdp --restart --force-kill list
 page cache live under `~/.cache/dia-cdp` or `$XDG_RUNTIME_DIR/dia-cdp`, so this
 project does not share daemon state with the original `chrome-cdp` script.
 
-## Plugin Decision
+## Plugin Layout
 
-This is intentionally a standalone CLI first. A Codex plugin is only worth
-adding if this needs to be distributed across machines with packaged skills,
-MCP tools, or agent-facing instructions. For this machine, a repo plus the
-`~/.local/bin/dia-cdp` command is simpler and less brittle.
+- `.agents/plugins/marketplace.json` exposes this repository as a Codex plugin marketplace.
+- `.codex-plugin/plugin.json` describes the `dia-cdp` plugin.
+- `skills/dia-cdp/SKILL.md` tells Codex when to prefer Dia CDP over Chrome CDP.
+- `skills/dia-cdp/scripts/dia-cdp` runs the CLI bundled in the installed plugin.
