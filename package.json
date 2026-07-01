@@ -1,0 +1,22 @@
+{
+  "name": "dia-cdp",
+  "version": "0.1.0",
+  "description": "Standalone Dia browser CDP CLI.",
+  "type": "module",
+  "private": true,
+  "license": "UNLICENSED",
+  "bin": {
+    "dia-cdp": "bin/dia-cdp"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

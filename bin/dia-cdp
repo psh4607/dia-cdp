@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd -P)"
+  LINK_TARGET="$(readlink "$SOURCE")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SOURCE="$LINK_TARGET"
+  else
+    SOURCE="$SOURCE_DIR/$LINK_TARGET"
+  fi
+done
+
+PROJECT_ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd -P)"
+PORT_FILE="$HOME/Library/Application Support/Dia/User Data/DevToolsActivePort"
+CDP_SCRIPT="$PROJECT_ROOT/src/cdp.mjs"
+CDP_PORT=9222
+MAX_WAIT=20
+
+restart=0
+force_kill=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --restart)
+      restart=1
+      shift
+      ;;
+    --force-kill)
+      force_kill=1
+      shift
+      ;;
+    --help)
+      cat <<'USAGE'
+dia-cdp [--restart] [--force-kill] <cdp-command> [args...]
+
+Runs the standalone Dia CDP CLI against Dia's DevToolsActivePort.
+
+Examples:
+  dia-cdp list
+  dia-cdp snap EB39EF3D
+  dia-cdp shot EB39EF3D /tmp/dia.png
+  dia-cdp eval EB39EF3D 'document.title'
+  dia-cdp --restart list
+
+Options:
+  --restart     Quit Dia gracefully, then reopen it with --remote-debugging-port=9222.
+  --force-kill  With --restart, kill Dia if graceful quit is blocked.
+USAGE
+      exit 0
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [[ ! -f "$CDP_SCRIPT" ]]; then
+  echo "Error: missing Dia CDP engine: $CDP_SCRIPT" >&2
+  exit 1
+fi
+
+dia_running() {
+  pgrep -x "Dia" >/dev/null 2>&1
+}
+
+dia_port_open() {
+  [[ -f "$PORT_FILE" ]] || return 1
+  [[ "$(sed -n '1p' "$PORT_FILE" 2>/dev/null)" == "$CDP_PORT" ]] || return 1
+  [[ -n "$(sed -n '2p' "$PORT_FILE" 2>/dev/null)" ]] || return 1
+  lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN 2>/dev/null | grep -q 'Dia'
+}
+
+wait_for_dia_cdp() {
+  for _ in $(seq 1 "$MAX_WAIT"); do
+    if dia_port_open; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+quit_dia() {
+  if ! dia_running; then
+    return 0
+  fi
+
+  osascript -e 'tell application "Dia" to quit' >/dev/null 2>&1 || true
+
+  for _ in $(seq 1 15); do
+    if ! dia_running; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  if [[ "$force_kill" == "1" ]]; then
+    killall Dia >/dev/null 2>&1 || true
+    for _ in $(seq 1 5); do
+      if ! dia_running; then
+        return 0
+      fi
+      sleep 1
+    done
+  fi
+
+  return 1
+}
+
+launch_dia_cdp() {
+  open -a "Dia" --args --remote-debugging-port="$CDP_PORT"
+}
+
+if [[ "$restart" == "1" ]]; then
+  if ! quit_dia; then
+    echo "Error: Dia did not quit. Close Dia manually or retry with: dia-cdp --restart --force-kill list" >&2
+    exit 1
+  fi
+  launch_dia_cdp
+elif ! dia_port_open; then
+  if dia_running; then
+    echo "Error: Dia is running, but CDP port $CDP_PORT is not available." >&2
+    echo "Run: dia-cdp --restart list" >&2
+    exit 1
+  fi
+  launch_dia_cdp
+fi
+
+if ! wait_for_dia_cdp; then
+  echo "Error: Dia CDP did not become available on port $CDP_PORT." >&2
+  exit 1
+fi
+
+exec env CDP_PORT_FILE="$PORT_FILE" node "$CDP_SCRIPT" "$@"
