@@ -1,6 +1,6 @@
 {
   "name": "dia-cdp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Dia browser CDP tools and Codex skill for inspecting the user's Dia session.",
   "author": {
     "name": "Seongho",
@@ -31,7 +31,9 @@
       "Local browser"
     ],
     "websiteURL": "https://github.com/psh4607/dia-cdp",
-    "brandColor": "#0F766E",
+    "brandColor": "#171717",
+    "composerIcon": "./assets/plugin-icon.svg",
+    "logo": "./assets/plugin-icon.svg",
     "defaultPrompt": [
       "Dia에 열린 탭 목록을 확인해줘.",
       "Dia에서 지금 보고 있는 페이지를 캡처해줘.",
