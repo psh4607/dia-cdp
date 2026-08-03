@@ -1,18 +1,21 @@
 {
   "name": "dia-cdp",
-  "version": "0.1.1",
-  "description": "Dia browser CDP CLI packaged as a Codex plugin.",
+  "version": "0.2.0",
+  "description": "Dia browser extension bridge and CDP CLI packaged as a Codex plugin.",
   "type": "module",
   "private": false,
   "license": "MIT",
   "bin": {
-    "dia-cdp": "bin/dia-cdp"
+    "dia-cdp": "bin/dia-cdp",
+    "dia-extension": "bin/dia-extension",
+    "install-dia-extension-host": "bin/install-dia-extension-host"
   },
   "files": [
     ".agents",
     ".codex-plugin",
     "assets",
     "bin",
+    "extension",
     "skills",
     "src",
     "LICENSE",

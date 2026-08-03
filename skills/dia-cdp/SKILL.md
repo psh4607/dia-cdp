@@ -5,8 +5,9 @@ description: Use when inspecting, debugging, capturing, or interacting with page
 
 # Dia CDP
 
-Use the plugin-bundled `dia-cdp` CLI for Dia browser inspection. It connects to
-Dia's `DevToolsActivePort` and uses the CDP engine shipped with this plugin.
+Use the plugin-bundled extension bridge for tab metadata when it is installed.
+It avoids Dia's remote-debugging approval dialog. Use the `dia-cdp` CLI for
+deeper browser inspection that requires Chrome DevTools Protocol access.
 
 ## When To Use
 
@@ -20,7 +21,13 @@ directory, or `dia-cdp` on `PATH` when the user has installed the CLI shim.
 
 ## Commands
 
-List Dia tabs:
+List Dia tabs without CDP when the extension bridge is available:
+
+```bash
+scripts/dia-extension list
+```
+
+Otherwise list Dia CDP targets:
 
 ```bash
 scripts/dia-cdp list
@@ -50,6 +57,11 @@ scripts/dia-cdp --restart --force-kill list
 
 ## Notes
 
+- The extension bridge requests `tabs` plus loopback-only access to
+  `http://127.0.0.1/*`; it does not request `debugger`, `nativeMessaging`, or
+  access to remote websites.
+- A missing extension bridge is not a CDP failure. Use `dia-extension ping` to
+  distinguish bridge installation from Dia remote-debugging state.
 - Runtime state lives under `~/.cache/dia-cdp`, separate from `chrome-cdp`.
 - `scripts/dia-cdp` is relative to this skill directory and survives plugin install.
 - For local dev servers where browser profile state does not matter, Playwright is still fine.

@@ -14,13 +14,14 @@ describe('Codex plugin package', () => {
     const plugin = readJson('.codex-plugin/plugin.json');
 
     assert.equal(plugin.name, 'dia-cdp');
-    assert.equal(plugin.version, '0.1.1');
+    assert.equal(plugin.version, '0.2.0');
     assert.equal(plugin.repository, 'https://github.com/psh4607/dia-cdp');
     assert.equal(plugin.skills, './skills/');
     assert.equal(plugin.interface.displayName, 'Dia CDP');
     assert.equal(plugin.interface.composerIcon, './assets/plugin-icon.svg');
     assert.equal(plugin.interface.logo, './assets/plugin-icon.svg');
-    assert.match(plugin.interface.longDescription, /Dia-focused Chrome DevTools Protocol CLI/);
+    assert.match(plugin.interface.longDescription, /extension bridge/);
+    assert.match(plugin.interface.longDescription, /Chrome DevTools Protocol CLI/);
   });
 
   it('defines a marketplace snapshot that installs the root plugin', () => {
