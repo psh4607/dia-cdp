@@ -70,6 +70,68 @@ function requestWebSocketUpgrade({ port, token, origin }) {
 }
 
 describe('Dia extension bridge', () => {
+  it('serves popup capability reads and writes over the authenticated bridge', { timeout: 2_000 }, async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-popup-capabilities-'));
+    temporaryDirectories.push(directory);
+    const socketPath = resolve(directory, 'bridge.sock');
+    const capabilitiesPath = resolve(directory, 'capabilities.json');
+    const relayPort = await getAvailablePort();
+    const token = 'popup-capability-token';
+    const child = spawn(process.execPath, [resolve(root, 'src/extension-host.mjs')], {
+      env: {
+        ...process.env,
+        DIA_EXTENSION_RELAY_PORT: String(relayPort),
+        DIA_EXTENSION_SOCKET: socketPath,
+        DIA_EXTENSION_TOKEN: token,
+        DIA_EXTENSION_CAPABILITIES: capabilitiesPath,
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    childProcesses.push(child);
+    await waitForPath(socketPath);
+
+    const socket = new WebSocket(`ws://127.0.0.1:${relayPort}/bridge?token=${token}`);
+    await new Promise((resolveOpen, reject) => {
+      socket.addEventListener('open', resolveOpen, { once: true });
+      socket.addEventListener('error', reject, { once: true });
+    });
+
+    async function controlRequest(id, command, args = {}) {
+      const response = new Promise((resolveResponse, reject) => {
+        socket.addEventListener('message', (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'control-response' && message.id === id) {
+              resolveResponse(message);
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      socket.send(JSON.stringify({ type: 'control-request', id, command, args }));
+      return response;
+    }
+
+    assert.deepEqual(await controlRequest('popup-1', 'relay.capabilities.get'), {
+      type: 'control-response',
+      id: 'popup-1',
+      ok: true,
+      result: { pageEval: false },
+    });
+    assert.deepEqual(await controlRequest('popup-2', 'relay.capabilities.set', {
+      name: 'page-eval',
+      enabled: true,
+    }), {
+      type: 'control-response',
+      id: 'popup-2',
+      ok: true,
+      result: { pageEval: true },
+    });
+    assert.deepEqual(JSON.parse(readFileSync(capabilitiesPath, 'utf8')), { pageEval: true });
+    socket.close();
+  });
+
   it('persists capability settings and blocks page evaluation in the relay', async () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-capabilities-'));
     temporaryDirectories.push(directory);

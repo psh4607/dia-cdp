@@ -1,5 +1,6 @@
 import { BRIDGE_TOKEN, RELAY_ORIGIN } from './bridge-config.js';
 import { handleBridgeRequest } from './commands.js';
+import { createControlChannel } from './control-channel.js';
 
 const MIN_RECONNECT_DELAY_MS = 2_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -39,6 +40,8 @@ function sendBridgeMessage(message) {
   return true;
 }
 
+const controlChannel = createControlChannel({ send: sendBridgeMessage });
+
 async function handleRelayMessage(event) {
   let request;
   try {
@@ -50,6 +53,7 @@ async function handleRelayMessage(event) {
     chrome.runtime.reload();
     return;
   }
+  if (controlChannel.handleMessage(request)) return;
   if (!request || request.type === 'heartbeat') return;
 
   try {
@@ -82,6 +86,7 @@ function connectBridge() {
     clearInterval(heartbeatTimer);
     heartbeatTimer = undefined;
     bridgeSocket = undefined;
+    controlChannel.rejectAll();
     setBridgeBadge('OFF', '#B3261E');
     scheduleReconnect();
   });
@@ -98,7 +103,21 @@ chrome.runtime.onStartup.addListener(initializeBridge);
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === RECONNECT_ALARM) connectBridge();
 });
-chrome.action.onClicked.addListener(connectBridge);
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'relay-control') return false;
+  if (!['relay.capabilities.get', 'relay.capabilities.set'].includes(message.command)) {
+    sendResponse({ ok: false, error: 'Unsupported relay control command' });
+    return false;
+  }
+  controlChannel.request(message.command, message.args || {}).then(
+    (result) => sendResponse({ ok: true, result }),
+    (error) => sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  return true;
+});
 
 setBridgeBadge('…', '#5F6368');
 initializeBridge();

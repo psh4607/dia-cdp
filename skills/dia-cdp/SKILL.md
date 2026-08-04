@@ -40,6 +40,11 @@ scripts/dia-browser eval <tab-id> 'document.title'
 scripts/dia-browser capability page-eval off
 ```
 
+The user can also select the Dia Codex Bridge extension icon and change the
+**Page evaluation** switch. The popup and CLI use the same relay-backed setting,
+so do not treat them as separate permissions. The popup refreshes from the
+relay every two seconds and disables the switch while the bridge is unavailable.
+
 For an advanced command that genuinely needs raw CDP:
 
 ```bash
@@ -157,6 +162,8 @@ scripts/dia-cdp --restart --force-kill list
 - The bridge exposes fixed operations by default. Arbitrary main-world
   JavaScript evaluation is accepted only while the private relay capability
   `page-eval` is enabled. Results and expressions are bounded.
+- The extension popup and CLI both read and write the relay capability file;
+  the green `ON` badge means bridge-connected, not page-eval-enabled.
 - `net` returns the page's bounded Resource Timing entries. Response bodies,
   raw request interception, and performance traces still require CDP.
 - Window focus uses the existing extension APIs and adds no manifest permission.

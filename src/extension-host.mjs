@@ -97,6 +97,34 @@ function handleBridgeResponse(bridgeResponse) {
     }
     return;
   }
+  if (bridgeResponse?.type === 'control-request') {
+    const response = {
+      type: 'control-response',
+      id: bridgeResponse.id,
+      ok: true,
+    };
+    try {
+      if (bridgeResponse.command === 'relay.capabilities.get') {
+        response.result = readBridgeCapabilities(capabilitiesPath);
+      } else if (bridgeResponse.command === 'relay.capabilities.set') {
+        if (typeof bridgeResponse.args?.enabled !== 'boolean') {
+          throw new Error('capability enabled state must be a boolean');
+        }
+        response.result = setBridgeCapability(
+          capabilitiesPath,
+          bridgeResponse.args.name,
+          bridgeResponse.args.enabled,
+        );
+      } else {
+        throw new Error('unsupported relay control command');
+      }
+    } catch (error) {
+      response.ok = false;
+      response.error = error instanceof Error ? error.message : String(error);
+    }
+    bridgeSocket?.write(encodeWebSocketFrame(JSON.stringify(response)));
+    return;
+  }
   const entry = pending.get(bridgeResponse?.id);
   if (!entry) return;
   pending.delete(bridgeResponse.id);

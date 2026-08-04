@@ -56,7 +56,11 @@ try {
       'manifest.json',
       'commands.js',
       'page-operations.js',
+      'control-channel.js',
       'service-worker.js',
+      'popup.html',
+      'popup.css',
+      'popup.js',
     ]) {
       const target = resolve(extensionInstallDirectory, fileName);
       copyFileSync(resolve(bundledExtensionDirectory, fileName), target);

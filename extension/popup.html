@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dia Codex Bridge</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Dia Codex Bridge</h1>
+          <p id="bridge-status" data-state="loading">Connecting…</p>
+        </div>
+      </header>
+
+      <section class="setting" aria-labelledby="page-eval-label">
+        <div class="setting-copy">
+          <label id="page-eval-label" for="page-eval-toggle">Page evaluation</label>
+          <p>Allow agents using the local relay to run JavaScript in ordinary pages.</p>
+        </div>
+        <input id="page-eval-toggle" type="checkbox" role="switch" disabled>
+      </section>
+
+      <p class="warning">Keep this off unless page-level JavaScript is needed. CLI and UI use the same persistent setting.</p>
+      <p id="error-message" class="error" role="alert" hidden></p>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

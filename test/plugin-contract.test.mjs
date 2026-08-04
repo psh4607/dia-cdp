@@ -14,7 +14,7 @@ describe('Codex plugin package', () => {
     const plugin = readJson('.codex-plugin/plugin.json');
 
     assert.equal(plugin.name, 'dia-cdp');
-    assert.equal(plugin.version, '0.7.0');
+    assert.equal(plugin.version, '0.8.0');
     assert.equal(plugin.repository, 'https://github.com/psh4607/dia-cdp');
     assert.equal(plugin.skills, './skills/');
     assert.equal(plugin.interface.displayName, 'Dia CDP');
@@ -27,7 +27,7 @@ describe('Codex plugin package', () => {
   it('publishes the automation profile launcher as a package command', () => {
     const pkg = readJson('package.json');
 
-    assert.equal(pkg.version, '0.7.0');
+    assert.equal(pkg.version, '0.8.0');
     assert.equal(pkg.bin['dia-automation'], 'bin/dia-automation');
     assert.equal(pkg.bin['dia-lifecycle'], 'bin/dia-lifecycle');
   });

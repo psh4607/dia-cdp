@@ -43,8 +43,8 @@ Dia's recurring `Allow debugging` dialog. It requests:
 
 Dia presents the broad site-access permission once when the unpacked extension
 is installed or upgraded. The bridge does not request the more powerful
-`debugger` or `nativeMessaging` permissions and does not accept arbitrary
-JavaScript evaluation from the CLI.
+`debugger` or `nativeMessaging` permissions. Arbitrary JavaScript evaluation is
+available only while the relay-backed `page-eval` capability is enabled.
 
 ### How the bridge works
 
@@ -105,6 +105,31 @@ require an explicit `--allow-cdp` invocation.
 `health` should report `relay: "running"` and `extensionConnected: true`.
 `ping` should return the bridge name and version. The extension badge also
 changes to **ON** while its authenticated relay connection is active.
+
+### Capability settings popup
+
+Select the Dia Codex Bridge extension icon to open its settings popup. The
+**Page evaluation** switch reads and writes the same relay-backed setting used
+by these CLI commands:
+
+```bash
+bin/dia-browser capabilities
+bin/dia-browser capability page-eval on
+bin/dia-browser capability page-eval off
+```
+
+There is no separate browser-side preference: both surfaces persist through
+the relay to `~/.local/share/dia-cdp/capabilities.json`. A UI change is visible
+to the next CLI command immediately, and the open popup refreshes from the
+relay every two seconds so CLI changes appear there as well. If the relay is
+unavailable, the popup disables the switch instead of showing a stale writable
+state. If a write fails, it restores the last relay-confirmed value.
+
+Enabling **Page evaluation** lets agents using the local relay run bounded
+JavaScript in ordinary pages. It does not grant a new manifest permission,
+enable CDP, or trigger Dia's remote-debugging approval popover. Keep it off
+unless page-level JavaScript is needed. The green **ON** badge continues to mean
+that the bridge is connected; it does not mean Page evaluation is enabled.
 
 ### Install the local payloads
 
@@ -201,7 +226,9 @@ bin/dia-browser capability page-eval off
 
 The setting is persisted with mode `0600` in
 `~/.local/share/dia-cdp/capabilities.json`. Enabling it does not add a manifest
-permission or show Dia's remote-debugging approval popover.
+permission or show Dia's remote-debugging approval popover. The extension icon
+offers the same relay-backed setting as a **Page evaluation** switch, so CLI and
+UI changes share one source of truth.
 
 The bridge also supports bounded Resource Timing inspection and best-effort DOM
 automation without CDP:

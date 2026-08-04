@@ -18,13 +18,14 @@ describe('Dia extension package', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'extension/manifest.json'), 'utf8'));
 
     assert.equal(manifest.manifest_version, 3);
-    assert.equal(manifest.version, '0.7.0');
+    assert.equal(manifest.version, '0.8.0');
     assert.equal(extensionIdFromKey(manifest.key), 'jkijmmbnkcgjmpagmpflooolealenfkf');
     assert.equal(manifest.background.type, 'module');
     assert.deepEqual(manifest.permissions, ['tabs', 'scripting', 'alarms']);
     assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*', '<all_urls>']);
     assert.equal(manifest.permissions.includes('debugger'), false);
     assert.equal(manifest.permissions.includes('nativeMessaging'), false);
+    assert.equal(manifest.action.default_popup, 'popup.html');
   });
 
   it('keeps the service worker alive through a local WebSocket heartbeat', () => {
@@ -40,6 +41,8 @@ describe('Dia extension package', () => {
     assert.match(worker, /chrome\.alarms\.onAlarm\.addListener/);
     assert.match(worker, /handleBridgeRequest\(chrome, request\)/);
     assert.match(worker, /setBridgeBadge\('ON'/);
+    assert.match(worker, /chrome\.runtime\.onMessage\.addListener/);
+    assert.match(worker, /relay\.capabilities\.(get|set)/);
     assert.doesNotMatch(worker, /fetch\(POLL_URL/);
   });
 
@@ -80,7 +83,11 @@ describe('Dia extension package', () => {
       'manifest.json',
       'commands.js',
       'page-operations.js',
+      'control-channel.js',
       'service-worker.js',
+      'popup.html',
+      'popup.css',
+      'popup.js',
     ]) {
       assert.match(installer, new RegExp(`'${fileName.replace('.', '\\.')}'`));
     }
@@ -100,5 +107,14 @@ describe('Dia extension package', () => {
     assert.match(installer, /launchctl/);
     assert.match(installer, /bootstrap/);
     assert.match(installer, /kickstart/);
+  });
+
+  it('documents the relay-backed popup capability toggle', () => {
+    const readme = readFileSync(resolve(root, 'README.md'), 'utf8');
+
+    assert.match(readme, /extension icon/i);
+    assert.match(readme, /Page evaluation/);
+    assert.match(readme, /same relay-backed setting/i);
+    assert.match(readme, /every two seconds/i);
   });
 });
