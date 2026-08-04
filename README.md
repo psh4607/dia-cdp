@@ -25,6 +25,11 @@ The plugin ships the `dia-cdp` skill and a skill-local `scripts/dia-cdp`
 wrapper, so Codex agents can use the bundled CLI from the installed plugin
 cache without depending on the old `chrome-cdp` skill.
 
+Installing the Codex plugin makes the skill available to agents. The Dia
+extension bridge is a separate, one-time local installation because Dia must
+explicitly load the unpacked extension. Follow the next section after installing
+the plugin.
+
 ## Dia Extension Bridge
 
 The extension bridge manages tabs, inspects pages, interacts with elements, and
@@ -40,6 +45,66 @@ Dia presents the broad site-access permission once when the unpacked extension
 is installed or upgraded. The bridge does not request the more powerful
 `debugger` or `nativeMessaging` permissions and does not accept arbitrary
 JavaScript evaluation from the CLI.
+
+### How the bridge works
+
+```mermaid
+flowchart LR
+    A["Codex agent"] --> B["dia-browser CLI"]
+    B -->|"user-only Unix socket"| C["local relay"]
+    C <-->|"authenticated loopback WebSocket"| D["Dia Codex Bridge extension"]
+    D --> E["Dia tabs and web pages"]
+    B -. "explicit --allow-cdp fallback" .-> F["Dia CDP"]
+```
+
+The CLI does not connect directly to the extension. It sends a fixed,
+allowlisted command to a local relay over
+`~/.cache/dia-cdp/extension-bridge.sock`. The relay runs as the current macOS
+user, listens only on `127.0.0.1:47137`, and authenticates the extension with a
+private token. The extension then performs the requested operation through
+`chrome.tabs` or `chrome.scripting` and returns a bounded result.
+
+Ordinary bridge commands do not enable remote debugging. Advanced operations
+such as network response inspection still use the separate CDP fallback and
+require an explicit `--allow-cdp` invocation.
+
+### Prerequisites
+
+- macOS with Dia installed in `/Applications/Dia.app`
+- Node.js 22 or newer
+- A local checkout of this repository for the one-time bridge installer
+
+### Quick start
+
+1. Install the Codex plugin as shown above.
+2. Clone this repository and install the per-user extension and relay payloads:
+
+   ```bash
+   git clone https://github.com/psh4607/dia-cdp.git
+   cd dia-cdp
+   bin/install-dia-extension-host
+   ```
+
+3. Open `chrome://extensions` in Dia and enable **Developer mode**.
+4. Choose **Load unpacked** and select:
+
+   ```text
+   ~/.local/share/dia-cdp/extension/
+   ```
+
+5. Confirm that the extension is named **Dia Codex Bridge** and has the stable
+   id `jkijmmbnkcgjmpagmpflooolealenfkf`.
+6. Verify the relay, extension connection, and a real tab request:
+
+   ```bash
+   bin/dia-browser health
+   bin/dia-browser ping
+   bin/dia-browser list
+   ```
+
+`health` should report `relay: "running"` and `extensionConnected: true`.
+`ping` should return the bridge name and version. The extension badge also
+changes to **ON** while its authenticated relay connection is active.
 
 ### Install the local payloads
 
@@ -82,6 +147,33 @@ the current macOS user.
 2. Choose **Load unpacked** and select `~/.local/share/dia-cdp/extension/`.
 3. Verify that Dia shows the stable extension id
    `jkijmmbnkcgjmpagmpflooolealenfkf`.
+
+### Updating the bridge
+
+After pulling a newer repository version, rerun the installer:
+
+```bash
+git pull --ff-only
+bin/install-dia-extension-host
+```
+
+The installer refreshes the stable extension payload, relay runtime, and
+LaunchAgent without changing the extension id or private bridge token. If Dia
+does not reload the worker automatically, use **Reload** on the extension card
+in `chrome://extensions`, then rerun the health checks.
+
+### Troubleshooting
+
+- `relay: "running"`, `extensionConnected: false`: confirm that the unpacked
+  extension is enabled, then press **Reload** on its extension card.
+- The Unix socket is missing or `health` cannot reach the relay: rerun
+  `bin/install-dia-extension-host` and retry after a few seconds.
+- `ping` reports an older version: reload the unpacked extension. The relay asks
+  an outdated worker to reload, but Dia may defer that until the worker wakes.
+- A command rejects a `chrome://` page: this is an intentional browser security
+  boundary. Run the command against an ordinary `http://` or `https://` tab.
+- A command says that CDP is required: rerun only that operation with
+  `--allow-cdp`; normal bridge commands should not need it.
 
 ### Use the bridge
 
