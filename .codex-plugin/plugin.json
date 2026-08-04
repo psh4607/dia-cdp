@@ -1,6 +1,6 @@
 {
   "name": "dia-cdp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Dia browser extension bridge, CDP tools, and Codex skill for inspecting the user's Dia session.",
   "author": {
     "name": "Seongho",
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Dia CDP",
-    "shortDescription": "Inspect Dia through an extension bridge or CDP.",
-    "longDescription": "Dia CDP packages a permission-minimized Dia extension bridge, a Dia-focused Chrome DevTools Protocol CLI, and a Codex skill for inspecting, capturing, debugging, and interacting with pages open in the user's Dia browser session.",
+    "shortDescription": "Control Dia with fewer debugging approvals.",
+    "longDescription": "Dia CDP packages an extension bridge with extension-first routing for tab management, page inspection, interaction, and screenshots without recurring remote-debugging approvals, plus a Dia-focused Chrome DevTools Protocol CLI fallback for advanced debugging.",
     "developerName": "Seongho",
     "category": "Developer Tools",
     "capabilities": [

@@ -14,17 +14,17 @@ function extensionIdFromKey(key) {
 }
 
 describe('Dia extension package', () => {
-  it('uses Manifest V3 with minimized permissions', () => {
+  it('uses Manifest V3 with scripting access but no debugger permission', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'extension/manifest.json'), 'utf8'));
 
     assert.equal(manifest.manifest_version, 3);
-    assert.equal(manifest.version, '0.2.0');
+    assert.equal(manifest.version, '0.3.0');
     assert.equal(extensionIdFromKey(manifest.key), 'jkijmmbnkcgjmpagmpflooolealenfkf');
     assert.equal(manifest.background.type, 'module');
-    assert.deepEqual(manifest.permissions, ['tabs']);
-    assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*']);
+    assert.deepEqual(manifest.permissions, ['tabs', 'scripting']);
+    assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*', '<all_urls>']);
     assert.equal(manifest.permissions.includes('debugger'), false);
-    assert.equal(manifest.permissions.includes('scripting'), false);
+    assert.equal(manifest.permissions.includes('nativeMessaging'), false);
   });
 
   it('connects only to the local loopback relay', () => {
@@ -35,6 +35,12 @@ describe('Dia extension package', () => {
     assert.match(worker, /fetch\(RESPONSE_URL/);
     assert.match(worker, /handleBridgeRequest\(chrome, request\)/);
     assert.match(worker, /setBridgeBadge\('ON'/);
+  });
+
+  it('accepts bounded multi-megabyte screenshot responses', () => {
+    const host = readFileSync(resolve(root, 'src/extension-host.mjs'), 'utf8');
+
+    assert.match(host, /const MAX_BODY_BYTES = 16_777_216/);
   });
 
   it('ships executable bridge entrypoints', () => {
@@ -52,7 +58,14 @@ describe('Dia extension package', () => {
 
     assert.match(installer, /'\.local', 'share', 'dia-cdp', 'relay'/);
     assert.match(installer, /'\.local', 'share', 'dia-cdp', 'extension'/);
-    assert.match(installer, /\['manifest\.json', 'commands\.js', 'service-worker\.js'\]/);
+    for (const fileName of [
+      'manifest.json',
+      'commands.js',
+      'page-operations.js',
+      'service-worker.js',
+    ]) {
+      assert.match(installer, new RegExp(`'${fileName.replace('.', '\\.')}'`));
+    }
     assert.match(installer, /copyFileSync\(resolve\(currentDir, 'extension-host\.mjs'/);
     assert.match(installer, /copyFileSync\(resolve\(currentDir, 'bridge-config\.mjs'/);
     assert.match(installer, /ensureBridgeToken\(tokenPath\)/);

@@ -44,7 +44,12 @@ try {
     const token = ensureBridgeToken(tokenPath);
 
     mkdirSync(extensionInstallDirectory, { recursive: true, mode: 0o700 });
-    for (const fileName of ['manifest.json', 'commands.js', 'service-worker.js']) {
+    for (const fileName of [
+      'manifest.json',
+      'commands.js',
+      'page-operations.js',
+      'service-worker.js',
+    ]) {
       const target = resolve(extensionInstallDirectory, fileName);
       copyFileSync(resolve(bundledExtensionDirectory, fileName), target);
       chmodSync(target, 0o600);

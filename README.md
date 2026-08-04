@@ -1,7 +1,7 @@
 # dia-cdp
 
-Permission-minimized extension bridge, standalone CDP CLI, and Codex plugin for
-the Dia browser on macOS.
+Extension-first browser bridge, standalone CDP CLI, and Codex plugin for the Dia
+browser on macOS.
 
 This project is a Dia-focused fork of a lightweight raw Chrome DevTools Protocol
 CLI. It does not depend on Codex's bundled `chrome-cdp` skill directory.
@@ -27,15 +27,18 @@ cache without depending on the old `chrome-cdp` skill.
 
 ## Dia Extension Bridge
 
-The extension bridge lists, reads, and activates Dia tabs without opening a CDP
-WebSocket and without triggering Dia's `Allow debugging` dialog. The first
-version intentionally requests only narrowly scoped permissions:
+The extension bridge manages tabs, inspects pages, interacts with elements, and
+captures visible screenshots without opening a CDP WebSocket or triggering
+Dia's recurring `Allow debugging` dialog. It requests:
 
 - `tabs`, to read tab titles and URLs
+- `scripting` and `<all_urls>`, to inspect and interact with ordinary web pages
 - `http://127.0.0.1/*`, to communicate with the user-only loopback relay
 
-It does not request the powerful `debugger` or `nativeMessaging` permissions,
-nor access to remote websites.
+Dia presents the broad site-access permission once when the unpacked extension
+is installed or upgraded. The bridge does not request the more powerful
+`debugger` or `nativeMessaging` permissions and does not accept arbitrary
+JavaScript evaluation from the CLI.
 
 ### Install the local payloads
 
@@ -86,7 +89,26 @@ bin/dia-extension ping
 bin/dia-extension list
 bin/dia-extension get <tab-id>
 bin/dia-extension activate <tab-id>
+bin/dia-extension snapshot <tab-id>
+bin/dia-extension query <tab-id> '#save'
+bin/dia-extension text <tab-id> main
+bin/dia-extension html <tab-id> main
+bin/dia-extension click <tab-id> '#save'
+bin/dia-extension type <tab-id> '#name' 'Seongho Bak'
+bin/dia-extension focus <tab-id> '#search'
+bin/dia-extension scroll <tab-id> '#details'
+bin/dia-extension scroll-by <tab-id> 0 600
+bin/dia-extension select <tab-id> '#team' backend
+bin/dia-extension key <tab-id> '#search' Enter
+bin/dia-extension shot <tab-id> /tmp/dia.png
+bin/dia-extension create https://example.com/
+bin/dia-extension navigate <tab-id> https://example.com/
+bin/dia-extension reload <tab-id>
+bin/dia-extension close <tab-id>
 ```
+
+Use `dia-cdp` only for capabilities the extension cannot expose, including
+network response bodies, performance traces, and unrestricted CDP domains.
 
 The CLI starts a relay bound only to `127.0.0.1:47137` and communicates with it
 through a user-only Unix socket at `~/.cache/dia-cdp/extension-bridge.sock`.
@@ -170,6 +192,6 @@ original `chrome-cdp` script.
 
 - `.agents/plugins/marketplace.json` exposes this repository as a Codex plugin marketplace.
 - `.codex-plugin/plugin.json` describes the `dia-cdp` plugin.
-- `extension/` contains the permission-minimized Dia extension.
+- `extension/` contains the extension-first Dia bridge.
 - `skills/dia-cdp/SKILL.md` tells Codex when to prefer Dia CDP over Chrome CDP.
 - `skills/dia-cdp/scripts/dia-cdp` runs the CLI bundled in the installed plugin.

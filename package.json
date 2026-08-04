@@ -1,6 +1,6 @@
 {
   "name": "dia-cdp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Dia browser extension bridge and CDP CLI packaged as a Codex plugin.",
   "type": "module",
   "private": false,

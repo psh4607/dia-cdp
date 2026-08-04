@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import net from 'node:net';
@@ -93,11 +93,161 @@ export async function sendBridgeRequest(command, args = {}, options = {}) {
 const USAGE = `dia-extension <command> [args] [--json]
 
 Commands:
-  ping                 Verify the Dia extension bridge
-  list                 List Dia tabs without CDP remote-debugging
-  get <tab-id>         Get one Dia tab
-  activate <tab-id>    Activate one Dia tab
+  ping                              Verify the Dia extension bridge
+  list                              List Dia tabs without CDP remote-debugging
+  get <tab-id>                      Get one Dia tab
+  activate <tab-id>                 Activate one Dia tab
+  create <url> [--background]       Create a tab
+  close <tab-id>                    Close a tab
+  navigate <tab-id> <url>           Navigate a tab
+  reload <tab-id>                   Reload a tab
+  snapshot <tab-id>                 Read compact page text and actionable elements
+  query <tab-id> <selector>         Describe one element
+  text <tab-id> [selector]          Read bounded visible text
+  html <tab-id> [selector]          Read bounded HTML
+  click <tab-id> <selector>         Click an element
+  type <tab-id> <selector> <text>   Replace a form value
+  focus <tab-id> <selector>         Focus an element
+  scroll <tab-id> <selector>        Scroll an element into view
+  scroll-by <tab-id> <x> <y>        Scroll the page by pixels
+  select <tab-id> <selector> <value> Select a form option
+  key <tab-id> <selector> <key>     Dispatch a key press
+  shot <tab-id> <path>              Capture the visible tab as PNG
 `;
+
+function numericTabId(value, command) {
+  const tabId = Number(value);
+  if (!Number.isInteger(tabId) || tabId < 0) {
+    throw new Error(`${command} requires a numeric tab id`);
+  }
+  return tabId;
+}
+
+function requiredArg(value, command, label) {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${command} requires ${label}`);
+  }
+  return value;
+}
+
+function joinedArg(args, startIndex, command, label) {
+  if (args.length <= startIndex) throw new Error(`${command} requires ${label}`);
+  return args.slice(startIndex).join(' ');
+}
+
+export function parseCliArgs(args) {
+  const command = args[0];
+  if (!command) throw new Error('command is required');
+
+  switch (command) {
+    case 'ping':
+      return { bridgeCommand: 'ping', bridgeArgs: {} };
+    case 'list':
+      return { bridgeCommand: 'tabs.list', bridgeArgs: {} };
+    case 'get':
+    case 'activate':
+    case 'reload':
+    case 'close':
+      return {
+        bridgeCommand: `tabs.${command}`,
+        bridgeArgs: { tabId: numericTabId(args[1], command) },
+      };
+    case 'create':
+      return {
+        bridgeCommand: 'tabs.create',
+        bridgeArgs: {
+          url: requiredArg(args[1], command, 'a URL'),
+          active: !args.includes('--background'),
+        },
+      };
+    case 'navigate':
+      return {
+        bridgeCommand: 'tabs.navigate',
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          url: requiredArg(args[2], command, 'a URL'),
+        },
+      };
+    case 'snapshot':
+      return {
+        bridgeCommand: 'page.snapshot',
+        bridgeArgs: { tabId: numericTabId(args[1], command) },
+      };
+    case 'query':
+    case 'click':
+    case 'focus':
+    case 'scroll':
+      return {
+        bridgeCommand: `page.${command}`,
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          selector: requiredArg(args[2], command, 'a selector'),
+        },
+      };
+    case 'text':
+    case 'html':
+      return {
+        bridgeCommand: `page.${command}`,
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          ...(args[2] ? { selector: args[2] } : {}),
+        },
+      };
+    case 'type':
+      return {
+        bridgeCommand: 'page.type',
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          selector: requiredArg(args[2], command, 'a selector'),
+          text: joinedArg(args, 3, command, 'text'),
+        },
+      };
+    case 'scroll-by':
+      {
+        const x = Number(args[2] || 0);
+        const y = Number(args[3] || 0);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          throw new Error('scroll-by requires numeric x and y values');
+        }
+        return {
+          bridgeCommand: 'page.scroll',
+          bridgeArgs: { tabId: numericTabId(args[1], command), x, y },
+        };
+      }
+    case 'select':
+      return {
+        bridgeCommand: 'page.select',
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          selector: requiredArg(args[2], command, 'a selector'),
+          value: joinedArg(args, 3, command, 'a value'),
+        },
+      };
+    case 'key':
+      return {
+        bridgeCommand: 'page.key',
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          selector: requiredArg(args[2], command, 'a selector'),
+          key: requiredArg(args[3], command, 'a key'),
+        },
+      };
+    case 'shot':
+      return {
+        bridgeCommand: 'page.screenshot',
+        bridgeArgs: { tabId: numericTabId(args[1], command) },
+        outputPath: requiredArg(args[2], command, 'an output path'),
+      };
+    default:
+      throw new Error(`unknown command: ${command}`);
+  }
+}
+
+export function writeScreenshot(dataUrl, outputPath) {
+  const match = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
+  if (!match) throw new Error('extension returned an invalid PNG screenshot');
+  writeFileSync(outputPath, Buffer.from(match[1], 'base64'), { mode: 0o600 });
+}
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -110,30 +260,13 @@ async function main() {
     return;
   }
 
-  let bridgeCommand;
-  let bridgeArgs = {};
-  switch (command) {
-    case 'ping':
-      bridgeCommand = 'ping';
-      break;
-    case 'list':
-      bridgeCommand = 'tabs.list';
-      break;
-    case 'get':
-    case 'activate': {
-      const tabId = Number(args[1]);
-      if (!Number.isInteger(tabId) || tabId < 0) {
-        throw new Error(`${command} requires a numeric tab id`);
-      }
-      bridgeCommand = `tabs.${command}`;
-      bridgeArgs = { tabId };
-      break;
-    }
-    default:
-      throw new Error(`unknown command: ${command}`);
-  }
-
+  const { bridgeCommand, bridgeArgs, outputPath } = parseCliArgs(args);
   const result = await sendBridgeRequest(bridgeCommand, bridgeArgs);
+  if (outputPath) {
+    writeScreenshot(result.dataUrl, outputPath);
+    console.log(outputPath);
+    return;
+  }
   if (json || !Array.isArray(result)) console.log(JSON.stringify(result, null, 2));
   else console.log(formatTabList(result));
 }

@@ -13,6 +13,11 @@ describe('dia-cdp bundled skill', () => {
     assert.match(skill, /^description: Use when .*Dia.*CDP/m);
     assert.match(skill, /scripts\/dia-cdp list/);
     assert.match(skill, /scripts\/dia-extension list/);
+    assert.match(skill, /scripts\/dia-extension snapshot/);
+    assert.match(skill, /scripts\/dia-extension click/);
+    assert.match(skill, /scripts\/dia-extension type/);
+    assert.match(skill, /scripts\/dia-extension shot/);
+    assert.match(skill, /CDP fallback/);
     assert.match(skill, /Do not call.*chrome-cdp/);
     assert.doesNotMatch(skill, /projects\/seongho\/projects\/dia-cdp\/src\/cdp\.mjs/);
   });

@@ -1,13 +1,14 @@
 ---
 name: dia-cdp
-description: Use when inspecting, debugging, capturing, or interacting with pages open in Dia through CDP, especially when the user uses Dia instead of Chrome.
+description: Use when inspecting, debugging, capturing, or interacting with pages open in Dia through the approval-free extension bridge or CDP fallback.
 ---
 
 # Dia CDP
 
-Use the plugin-bundled extension bridge for tab metadata when it is installed.
-It avoids Dia's remote-debugging approval dialog. Use the `dia-cdp` CLI for
-deeper browser inspection that requires Chrome DevTools Protocol access.
+Use the plugin-bundled extension bridge first. It avoids Dia's remote-debugging
+approval dialog for tab management, page inspection, interaction, and visible
+screenshots. Use the `dia-cdp` CLI only as a CDP fallback for capabilities the
+extension cannot provide, such as network response bodies and performance traces.
 
 ## When To Use
 
@@ -21,13 +22,38 @@ directory, or `dia-cdp` on `PATH` when the user has installed the CLI shim.
 
 ## Commands
 
-List Dia tabs without CDP when the extension bridge is available:
+List Dia tabs without CDP:
 
 ```bash
 scripts/dia-extension list
 ```
 
-Otherwise list Dia CDP targets:
+Inspect and interact with a page without CDP:
+
+```bash
+scripts/dia-extension snapshot <tab-id>
+scripts/dia-extension query <tab-id> '#save'
+scripts/dia-extension text <tab-id> main
+scripts/dia-extension html <tab-id> main
+scripts/dia-extension click <tab-id> '#save'
+scripts/dia-extension type <tab-id> '#name' 'Seongho Bak'
+scripts/dia-extension focus <tab-id> '#search'
+scripts/dia-extension scroll <tab-id> '#details'
+scripts/dia-extension select <tab-id> '#team' backend
+scripts/dia-extension key <tab-id> '#search' Enter
+scripts/dia-extension shot <tab-id> /tmp/dia.png
+```
+
+Manage navigation without CDP:
+
+```bash
+scripts/dia-extension create https://example.com/
+scripts/dia-extension navigate <tab-id> https://example.com/
+scripts/dia-extension reload <tab-id>
+scripts/dia-extension close <tab-id>
+```
+
+For CDP-only work, list Dia CDP targets:
 
 ```bash
 scripts/dia-cdp list
@@ -57,9 +83,11 @@ scripts/dia-cdp --restart --force-kill list
 
 ## Notes
 
-- The extension bridge requests `tabs` plus loopback-only access to
-  `http://127.0.0.1/*`; it does not request `debugger`, `nativeMessaging`, or
-  access to remote websites.
+- The extension bridge requests `tabs`, `scripting`, and `<all_urls>` so one
+  install-time grant replaces recurring remote-debugging approvals for ordinary
+  web pages. It does not request `debugger` or `nativeMessaging`.
+- The bridge exposes fixed operations and deliberately does not accept arbitrary
+  JavaScript evaluation.
 - A missing extension bridge is not a CDP failure. Use `dia-extension ping` to
   distinguish bridge installation from Dia remote-debugging state.
 - Runtime state lives under `~/.cache/dia-cdp`, separate from `chrome-cdp`.

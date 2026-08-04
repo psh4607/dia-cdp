@@ -13,7 +13,7 @@ import {
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const POLL_TIMEOUT_MS = 20_000;
-const MAX_BODY_BYTES = 1_048_576;
+const MAX_BODY_BYTES = 16_777_216;
 const socketPath = process.env.DIA_EXTENSION_SOCKET
   || resolve(homedir(), '.cache', 'dia-cdp', 'extension-bridge.sock');
 const relayPort = Number(process.env.DIA_EXTENSION_RELAY_PORT || DEFAULT_RELAY_PORT);
