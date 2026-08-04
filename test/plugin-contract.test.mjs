@@ -14,7 +14,7 @@ describe('Codex plugin package', () => {
     const plugin = readJson('.codex-plugin/plugin.json');
 
     assert.equal(plugin.name, 'dia-cdp');
-    assert.equal(plugin.version, '0.4.0');
+    assert.equal(plugin.version, '0.5.0');
     assert.equal(plugin.repository, 'https://github.com/psh4607/dia-cdp');
     assert.equal(plugin.skills, './skills/');
     assert.equal(plugin.interface.displayName, 'Dia CDP');
@@ -22,6 +22,13 @@ describe('Codex plugin package', () => {
     assert.equal(plugin.interface.logo, './assets/plugin-icon.svg');
     assert.match(plugin.interface.longDescription, /extension bridge/);
     assert.match(plugin.interface.longDescription, /Chrome DevTools Protocol CLI/);
+  });
+
+  it('publishes the automation profile launcher as a package command', () => {
+    const pkg = readJson('package.json');
+
+    assert.equal(pkg.version, '0.5.0');
+    assert.equal(pkg.bin['dia-automation'], 'bin/dia-automation');
   });
 
   it('defines a marketplace snapshot that installs the root plugin', () => {

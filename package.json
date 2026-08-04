@@ -1,12 +1,13 @@
 {
   "name": "dia-cdp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Dia browser extension bridge and CDP CLI packaged as a Codex plugin.",
   "type": "module",
   "private": false,
   "license": "MIT",
   "bin": {
     "dia-cdp": "bin/dia-cdp",
+    "dia-automation": "bin/dia-automation",
     "dia-browser": "bin/dia-browser",
     "dia-extension": "bin/dia-extension",
     "install-dia-extension-host": "bin/install-dia-extension-host"

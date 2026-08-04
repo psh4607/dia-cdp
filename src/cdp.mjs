@@ -26,11 +26,13 @@ const DAEMON_CONNECT_DELAY = 300;
 const MIN_TARGET_PREFIX_LEN = 8;
 const IS_WINDOWS = process.platform === 'win32';
 if (!IS_WINDOWS) process.umask(0o077);
-const RUNTIME_DIR = IS_WINDOWS
-  ? resolve(process.env.LOCALAPPDATA || resolve(homedir(), 'AppData', 'Local'), 'dia-cdp')
-  : process.env.XDG_RUNTIME_DIR
-    ? resolve(process.env.XDG_RUNTIME_DIR, 'dia-cdp')
-    : resolve(homedir(), '.cache', 'dia-cdp');
+const RUNTIME_DIR = process.env.DIA_CDP_RUNTIME_DIR
+  ? resolve(process.env.DIA_CDP_RUNTIME_DIR)
+  : IS_WINDOWS
+    ? resolve(process.env.LOCALAPPDATA || resolve(homedir(), 'AppData', 'Local'), 'dia-cdp')
+    : process.env.XDG_RUNTIME_DIR
+      ? resolve(process.env.XDG_RUNTIME_DIR, 'dia-cdp')
+      : resolve(homedir(), '.cache', 'dia-cdp');
 try { mkdirSync(RUNTIME_DIR, { recursive: true, mode: 0o700 }); } catch {}
 const PAGES_CACHE = resolve(RUNTIME_DIR, 'pages.json');
 
@@ -877,7 +879,9 @@ async function main() {
     cdp.close();
     writeFileSync(PAGES_CACHE, JSON.stringify(pages), { mode: 0o600 });
     console.log(`Opened new tab: ${targetId.slice(0, 8)}  ${url}`);
-    console.log('Note: this tab will need "Allow debugging?" approval on first access.');
+    if (process.env.DIA_CDP_APPROVAL_FREE !== '1') {
+      console.log('Note: this tab will need "Allow debugging?" approval on first access.');
+    }
     return;
   }
 

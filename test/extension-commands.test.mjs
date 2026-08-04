@@ -19,11 +19,13 @@ function createChromeMock() {
 
   const scriptCalls = [];
   const tabCalls = [];
+  const windowCalls = [];
   let captureFailuresRemaining = 0;
 
   return {
     scriptCalls,
     tabCalls,
+    windowCalls,
     failNextCapture() { captureFailuresRemaining += 1; },
     setTabActive(active) { tabs[0].active = active; },
     runtime: {
@@ -55,6 +57,12 @@ function createChromeMock() {
           throw new Error('Failed to capture tab: image readback failed');
         }
         return 'data:image/png;base64,c2NyZWVuc2hvdA==';
+      },
+    },
+    windows: {
+      update: async (windowId, update) => {
+        windowCalls.push(['update', windowId, update]);
+        return { id: windowId, ...update };
       },
     },
   };
@@ -99,6 +107,19 @@ describe('Dia extension commands', () => {
 
     assert.equal(selected.id, 10);
     assert.equal(activated.active, true);
+  });
+
+  it('focuses the selected tab and its containing window', async () => {
+    const chromeApi = createChromeMock();
+    const focused = await handleBridgeRequest(chromeApi, {
+      command: 'windows.focusTab',
+      args: { tabId: 10 },
+    });
+
+    assert.deepEqual(chromeApi.tabCalls, [['update', 10, { active: true }]]);
+    assert.deepEqual(chromeApi.windowCalls, [['update', 2, { focused: true }]]);
+    assert.equal(focused.id, 10);
+    assert.equal(focused.active, true);
   });
 
   it('runs allowlisted page operations through chrome.scripting', async () => {

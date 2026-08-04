@@ -18,10 +18,23 @@ describe('dia-cdp bundled skill', () => {
     assert.match(skill, /scripts\/dia-extension type/);
     assert.match(skill, /scripts\/dia-extension shot/);
     assert.match(skill, /scripts\/dia-browser/);
+    assert.match(skill, /scripts\/dia-automation start/);
+    assert.match(skill, /scripts\/dia-extension window-focus/);
+    assert.match(skill, /separate.*user-data-dir/i);
+    assert.match(skill, /cookies.*downloads.*clipboard/i);
     assert.match(skill, /--allow-cdp/);
     assert.match(skill, /CDP fallback/);
     assert.match(skill, /Do not call.*chrome-cdp/);
     assert.doesNotMatch(skill, /projects\/seongho\/projects\/dia-cdp\/src\/cdp\.mjs/);
+  });
+
+  it('ships a skill-local automation profile wrapper', () => {
+    const scriptPath = resolve(root, 'skills/dia-cdp/scripts/dia-automation');
+    const script = readFileSync(scriptPath, 'utf8');
+    const stat = statSync(scriptPath);
+
+    assert.match(script, /exec "\$PLUGIN_ROOT\/bin\/dia-automation" "\$@"/);
+    assert.ok(stat.mode & 0o111, 'automation profile wrapper must be executable');
   });
 
   it('ships a skill-local CLI wrapper for plugin installs', () => {

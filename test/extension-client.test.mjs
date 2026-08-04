@@ -75,6 +75,10 @@ describe('dia-extension CLI', () => {
       bridgeCommand: 'tabs.navigate',
       bridgeArgs: { tabId: 10, url: 'https://openai.com/' },
     });
+    assert.deepEqual(client.parseCliArgs(['window-focus', '10']), {
+      bridgeCommand: 'windows.focusTab',
+      bridgeArgs: { tabId: 10 },
+    });
     assert.deepEqual(client.parseCliArgs(['shot', '10', '/tmp/dia.png']), {
       bridgeCommand: 'page.screenshot',
       bridgeArgs: { tabId: 10 },

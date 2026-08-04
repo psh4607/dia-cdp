@@ -115,6 +115,7 @@ bin/dia-extension ping
 bin/dia-extension list
 bin/dia-extension get <tab-id>
 bin/dia-extension activate <tab-id>
+bin/dia-extension window-focus <tab-id>
 bin/dia-extension snapshot <tab-id>
 bin/dia-extension query <tab-id> '#save'
 bin/dia-extension text <tab-id> main
@@ -132,6 +133,40 @@ bin/dia-extension navigate <tab-id> https://example.com/
 bin/dia-extension reload <tab-id>
 bin/dia-extension close <tab-id>
 ```
+
+## Isolated Automation Profile
+
+When an automation task does not need the user's main Dia cookies or tabs, start
+a separate Dia process with its own persistent user-data directory and an
+ephemeral debugging port:
+
+```bash
+bin/dia-automation path
+bin/dia-automation start https://example.com/
+bin/dia-automation status
+bin/dia-automation list
+bin/dia-automation snap <target>
+bin/dia-automation stop
+```
+
+The default profile lives at
+`~/.local/share/dia-cdp/automation-profile`. Log in to required sites inside
+that profile once. The launcher never copies or shares
+`~/Library/Application Support/Dia/User Data`, and `stop` verifies the recorded
+process command before signaling its process group. Profile data is preserved
+after stopping. Override the location with `DIA_AUTOMATION_PROFILE_DIR` only
+when another isolated directory is required.
+
+The automation profile is intentionally independent from the extension bridge.
+It is useful for CDP-heavy tasks where a separate login is acceptable. Use the
+extension-first `dia-browser` path for the user's existing Dia session.
+
+## Optional High-Privilege Capabilities
+
+Version 0.5.0 adds window focus without adding a manifest permission. Cookie,
+download, clipboard, request observation or modification, file URL, and
+incognito capabilities remain unsupported by default. Add one only when there
+is a concrete use case and its permission warning is acceptable.
 
 Use `dia-cdp` only for capabilities the extension cannot expose, including
 network response bodies, performance traces, and unrestricted CDP domains.
@@ -225,5 +260,6 @@ original `chrome-cdp` script.
 - `.agents/plugins/marketplace.json` exposes this repository as a Codex plugin marketplace.
 - `.codex-plugin/plugin.json` describes the `dia-cdp` plugin.
 - `extension/` contains the extension-first Dia bridge.
+- `bin/dia-automation` manages the isolated automation-only Dia profile.
 - `skills/dia-cdp/SKILL.md` tells Codex when to prefer Dia CDP over Chrome CDP.
 - `skills/dia-cdp/scripts/dia-cdp` runs the CLI bundled in the installed plugin.

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -10,6 +10,16 @@ describe('dia-cdp wrapper contract', () => {
     const wrapper = readFileSync(resolve(root, 'bin/dia-browser'), 'utf8');
 
     assert.match(wrapper, /src\/extension-client\.mjs/);
+  });
+
+  it('ships an isolated Dia automation profile launcher', () => {
+    const wrapperPath = resolve(root, 'bin/dia-automation');
+    const enginePath = resolve(root, 'src/automation-profile.mjs');
+    assert.equal(existsSync(wrapperPath), true, 'bin/dia-automation must exist');
+    assert.equal(existsSync(enginePath), true, 'automation profile engine must exist');
+    assert.ok(statSync(wrapperPath).mode & 0o111, 'bin/dia-automation must be executable');
+    const wrapper = readFileSync(wrapperPath, 'utf8');
+    assert.match(wrapper, /src\/automation-profile\.mjs/);
   });
 
   it('execs the project-local CDP engine with Dia DevToolsActivePort', () => {

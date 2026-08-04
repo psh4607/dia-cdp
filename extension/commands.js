@@ -109,6 +109,13 @@ export async function handleBridgeRequest(chromeApi, request) {
       return sanitizeTab(tab);
     }
 
+    case 'windows.focusTab': {
+      const tabId = requireTabId(args.tabId);
+      const selected = await chromeApi.tabs.update(tabId, { active: true });
+      await chromeApi.windows.update(selected.windowId, { focused: true });
+      return sanitizeTab(selected);
+    }
+
     case 'tabs.navigate': {
       const tab = await chromeApi.tabs.update(
         requireTabId(args.tabId),

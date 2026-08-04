@@ -1,6 +1,6 @@
 ---
 name: dia-cdp
-description: Use when inspecting, debugging, capturing, or interacting with pages open in Dia through the approval-free extension bridge or CDP fallback.
+description: Use when inspecting, debugging, capturing, or interacting with pages open in Dia through the approval-free extension bridge, a separate automation profile, or CDP fallback.
 ---
 
 # Dia CDP
@@ -9,12 +9,6 @@ Use the plugin-bundled extension bridge first. It avoids Dia's remote-debugging
 approval dialog for tab management, page inspection, interaction, and visible
 screenshots. Use the `dia-cdp` CLI only as a CDP fallback for capabilities the
 extension cannot provide, such as network response bodies and performance traces.
-
-## When To Use
-
-- The user asks to inspect, debug, screenshot, or interact with a page open in Dia.
-- The target page depends on Dia's logged-in session, cookies, extensions, or tabs.
-- The user mentions Dia, not Google Chrome, for browser state.
 
 Do not call the old `chrome-cdp` skill or `~/.codex/skills/chrome-cdp/scripts/cdp.mjs`
 for Dia pages. Use the bundled `scripts/dia-cdp` wrapper from this skill
@@ -67,6 +61,7 @@ scripts/dia-extension scroll <tab-id> '#details'
 scripts/dia-extension select <tab-id> '#team' backend
 scripts/dia-extension key <tab-id> '#search' Enter
 scripts/dia-extension shot <tab-id> /tmp/dia.png
+scripts/dia-extension window-focus <tab-id>
 ```
 
 Manage navigation without CDP:
@@ -77,6 +72,22 @@ scripts/dia-extension navigate <tab-id> https://example.com/
 scripts/dia-extension reload <tab-id>
 scripts/dia-extension close <tab-id>
 ```
+
+Use a separate automation-only Dia user-data-dir when the user's main Dia
+cookies, login state, extensions, and tabs are not required:
+
+```bash
+scripts/dia-automation path
+scripts/dia-automation start https://example.com/
+scripts/dia-automation status
+scripts/dia-automation list
+scripts/dia-automation snap <target>
+scripts/dia-automation stop
+```
+
+Log in to required sites inside that profile once. Never copy or concurrently
+share the main Dia profile. `status`, `path`, and `stop` do not start Dia, and
+`stop` signals only the recorded process after verifying its user-data-dir.
 
 For CDP-only work, list Dia CDP targets:
 
@@ -113,6 +124,10 @@ scripts/dia-cdp --restart --force-kill list
   web pages. It does not request `debugger` or `nativeMessaging`.
 - The bridge exposes fixed operations and deliberately does not accept arbitrary
   JavaScript evaluation.
+- Window focus uses the existing extension APIs and adds no manifest permission.
+- Cookies, downloads, clipboard access, request observation or modification,
+  file URL access, and incognito access stay unsupported unless the user asks
+  for one capability and accepts its specific permission trade-off.
 - The extension keeps its local WebSocket alive with a 20-second heartbeat and
   uses a 30-second alarm to reconnect after worker suspension or relay startup.
 - A user LaunchAgent starts the relay at login and restarts it after crashes.

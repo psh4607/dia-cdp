@@ -33,6 +33,12 @@ describe('forked CDP engine contract', () => {
     const source = readFileSync(sourcePath, 'utf8');
 
     assert.match(source, /'dia-cdp'/);
+    assert.match(source, /DIA_CDP_RUNTIME_DIR/);
+    const automation = readFileSync(
+      resolve(import.meta.dirname, '../src/automation-profile.mjs'),
+      'utf8',
+    );
+    assert.match(automation, /DIA_CDP_RUNTIME_DIR: config\.runtimeDir/);
     assert.doesNotMatch(source, /resolve\(homedir\(\), '\.cache', 'cdp'\)/);
   });
 
@@ -42,5 +48,16 @@ describe('forked CDP engine contract', () => {
     assert.match(source, /const CONNECT_TIMEOUT = 12000;/);
     assert.match(source, /Timeout connecting to CDP WebSocket/);
     assert.match(source, /settle\(rej, new Error\(`Timeout connecting to CDP WebSocket after \$\{CONNECT_TIMEOUT\}ms`\)\);\n\s+try \{ this\.#ws\?\.close\(\); \} catch \{\}/);
+  });
+
+  it('does not claim approval is needed for an approval-free automation profile', () => {
+    const source = readFileSync(sourcePath, 'utf8');
+    const automation = readFileSync(
+      resolve(import.meta.dirname, '../src/automation-profile.mjs'),
+      'utf8',
+    );
+
+    assert.match(source, /DIA_CDP_APPROVAL_FREE/);
+    assert.match(automation, /DIA_CDP_APPROVAL_FREE: '1'/);
   });
 });

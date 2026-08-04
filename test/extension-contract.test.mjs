@@ -18,7 +18,7 @@ describe('Dia extension package', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'extension/manifest.json'), 'utf8'));
 
     assert.equal(manifest.manifest_version, 3);
-    assert.equal(manifest.version, '0.4.0');
+    assert.equal(manifest.version, '0.5.0');
     assert.equal(extensionIdFromKey(manifest.key), 'jkijmmbnkcgjmpagmpflooolealenfkf');
     assert.equal(manifest.background.type, 'module');
     assert.deepEqual(manifest.permissions, ['tabs', 'scripting', 'alarms']);
@@ -58,8 +58,10 @@ describe('Dia extension package', () => {
     for (const path of [
       'bin/dia-extension',
       'bin/dia-browser',
+      'bin/dia-automation',
       'bin/install-dia-extension-host',
       'skills/dia-cdp/scripts/dia-browser',
+      'skills/dia-cdp/scripts/dia-automation',
       'skills/dia-cdp/scripts/dia-extension',
     ]) {
       assert.ok(statSync(resolve(root, path)).mode & 0o111, `${path} must be executable`);

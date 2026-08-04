@@ -125,6 +125,7 @@ Commands:
   list                              List Dia tabs without CDP remote-debugging
   get <tab-id>                      Get one Dia tab
   activate <tab-id>                 Activate one Dia tab
+  window-focus <tab-id>             Focus a tab and bring its Dia window forward
   create <url> [--background]       Create a tab
   close <tab-id>                    Close a tab
   navigate <tab-id> <url>           Navigate a tab
@@ -192,6 +193,11 @@ export function parseCliArgs(args) {
     case 'close':
       return {
         bridgeCommand: `tabs.${command}`,
+        bridgeArgs: { tabId: numericTabId(args[1], command) },
+      };
+    case 'window-focus':
+      return {
+        bridgeCommand: 'windows.focusTab',
         bridgeArgs: { tabId: numericTabId(args[1], command) },
       };
     case 'create':
