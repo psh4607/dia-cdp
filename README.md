@@ -108,6 +108,26 @@ bin/dia-browser cdp-stop <cdp-target>
 An approved per-tab CDP daemon is reused for eight hours by default. Set
 `DIA_CDP_IDLE_TIMEOUT_MS` to choose a different positive idle duration.
 
+### Default Dia lifecycle
+
+Use separate commands for automation-session cleanup and browser lifecycle:
+
+```bash
+bin/dia-browser dia-status
+bin/dia-browser dia-start
+bin/dia-browser safe-stop
+bin/dia-browser safe-dia-stop
+bin/dia-browser safe-dia-restart
+bin/dia-browser safe-dia-restart --enable-cdp
+```
+
+`safe-stop` stops only reusable CDP daemons and leaves Dia open.
+`safe-dia-stop` sends `SIGTERM` only to default Dia root processes and excludes
+every process launched with `--user-data-dir`, so isolated automation profiles
+are not touched. It never escalates to `SIGKILL`. `safe-dia-restart` starts the
+same default profile again and waits for the extension bridge to reconnect.
+Remote debugging stays off unless `--enable-cdp` is explicit.
+
 The lower-level extension command remains available:
 
 ```bash

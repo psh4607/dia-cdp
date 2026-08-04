@@ -10,8 +10,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REQUEST_TIMEOUT_MS = 45_000;
 const START_TIMEOUT_MS = 3_000;
+const BRIDGE_READY_TIMEOUT_MS = 45_000;
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const cdpWrapperPath = resolve(currentDir, '..', 'bin', 'dia-cdp');
+const lifecycleWrapperPath = resolve(currentDir, '..', 'bin', 'dia-lifecycle');
 const bundledManifestPath = resolve(currentDir, '..', 'extension', 'manifest.json');
 const stableManifestPath = resolve(
   homedir(),
@@ -154,6 +156,13 @@ CDP-only commands (require --allow-cdp and may show Dia approval):
 Session commands (never start a new CDP connection):
   cdp-status [target]               Show reusable CDP daemon sessions
   cdp-stop [target]                 Stop reusable CDP daemon sessions
+  safe-stop [target]                Stop only reusable CDP daemon sessions
+
+Default Dia lifecycle commands:
+  dia-status                        Inspect default Dia without starting it
+  dia-start [--enable-cdp]          Start default Dia; CDP is opt-in
+  safe-dia-stop                     Gracefully stop default Dia only
+  safe-dia-restart [--enable-cdp]   Stop, restart, and wait for bridge recovery
 `;
 
 function numericTabId(value, command) {
@@ -307,11 +316,26 @@ export function classifyRoute(args) {
     return { route: 'cdp', cdpArgs: routedArgs, requiresConsent: true };
   }
 
-  if (command === 'cdp-status' || command === 'cdp-stop') {
+  if (command === 'cdp-status' || command === 'cdp-stop' || command === 'safe-stop') {
     return {
       route: 'cdp',
       cdpArgs: [command === 'cdp-status' ? 'status' : 'stop', ...routedArgs.slice(1)],
       requiresConsent: false,
+    };
+  }
+
+  const lifecycleCommands = {
+    'dia-status': { command: 'status', waitForBridge: false },
+    'dia-start': { command: 'start', waitForBridge: true },
+    'safe-dia-stop': { command: 'stop', waitForBridge: false },
+    'safe-dia-restart': { command: 'restart', waitForBridge: true },
+  };
+  if (lifecycleCommands[command]) {
+    const lifecycle = lifecycleCommands[command];
+    return {
+      route: 'lifecycle',
+      lifecycleArgs: [lifecycle.command, ...routedArgs.slice(1)],
+      waitForBridge: lifecycle.waitForBridge,
     };
   }
 
@@ -334,6 +358,47 @@ function runCdp(cdpArgs) {
   });
 }
 
+function runLifecycle(lifecycleArgs) {
+  return new Promise((resolveRun, reject) => {
+    const child = spawn(lifecycleWrapperPath, lifecycleArgs, { stdio: 'inherit' });
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      if (signal) reject(new Error(`Dia lifecycle command stopped by ${signal}`));
+      else if (code === 0) resolveRun();
+      else reject(new Error(`Dia lifecycle command exited with status ${code}`));
+    });
+  });
+}
+
+export async function waitForBridgeConnection({
+  requestHealth = () => sendBridgeRequest('relay.health'),
+  requestTabs = () => sendBridgeRequest('tabs.list'),
+  wait = delay,
+  timeoutMs = BRIDGE_READY_TIMEOUT_MS,
+  minimumGeneration,
+  requireTab = false,
+} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() <= deadline) {
+    try {
+      const health = await requestHealth();
+      const generationReady = minimumGeneration === undefined
+        || health.connectionGeneration >= minimumGeneration;
+      if (health.extensionConnected && generationReady) {
+        if (!requireTab) return health;
+        const tabs = await requestTabs();
+        if (tabs.length > 0) return health;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await wait(250);
+  }
+  const detail = lastError ? ` (${lastError.message})` : '';
+  throw new Error(`Dia extension did not reconnect within ${timeoutMs}ms${detail}`);
+}
+
 export function writeScreenshot(dataUrl, outputPath) {
   const match = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
   if (!match) throw new Error('extension returned an invalid PNG screenshot');
@@ -353,6 +418,24 @@ async function main() {
 
   syncInstalledPayload();
   const route = classifyRoute(args);
+  if (route.route === 'lifecycle') {
+    let minimumGeneration;
+    if (route.lifecycleArgs[0] === 'restart') {
+      try {
+        const health = await sendBridgeRequest('relay.health');
+        if (Number.isInteger(health.connectionGeneration)) {
+          minimumGeneration = health.connectionGeneration + 1;
+        }
+      } catch {
+        // The relay may not be running until Dia starts again.
+      }
+    }
+    await runLifecycle(route.lifecycleArgs);
+    if (route.waitForBridge) {
+      await waitForBridgeConnection({ minimumGeneration, requireTab: true });
+    }
+    return;
+  }
   if (route.route === 'cdp') {
     if (route.requiresConsent && !args.includes('--allow-cdp')) {
       throw new Error(

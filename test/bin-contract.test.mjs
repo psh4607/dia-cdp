@@ -22,6 +22,16 @@ describe('dia-cdp wrapper contract', () => {
     assert.match(wrapper, /src\/automation-profile\.mjs/);
   });
 
+  it('ships a safe default Dia lifecycle controller', () => {
+    const wrapperPath = resolve(root, 'bin/dia-lifecycle');
+    const enginePath = resolve(root, 'src/dia-lifecycle.mjs');
+    assert.equal(existsSync(wrapperPath), true, 'bin/dia-lifecycle must exist');
+    assert.equal(existsSync(enginePath), true, 'default Dia lifecycle engine must exist');
+    assert.ok(statSync(wrapperPath).mode & 0o111, 'bin/dia-lifecycle must be executable');
+    const wrapper = readFileSync(wrapperPath, 'utf8');
+    assert.match(wrapper, /src\/dia-lifecycle\.mjs/);
+  });
+
   it('execs the project-local CDP engine with Dia DevToolsActivePort', () => {
     const wrapper = readFileSync(resolve(root, 'bin/dia-cdp'), 'utf8');
 

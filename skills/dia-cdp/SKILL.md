@@ -39,7 +39,24 @@ Inspect or stop existing CDP sessions without opening a new CDP connection:
 ```bash
 scripts/dia-browser cdp-status
 scripts/dia-browser cdp-stop <cdp-target>
+scripts/dia-browser safe-stop
 ```
+
+Manage the default Dia process separately from CDP sessions:
+
+```bash
+scripts/dia-browser dia-status
+scripts/dia-browser dia-start
+scripts/dia-browser safe-dia-stop
+scripts/dia-browser safe-dia-restart
+scripts/dia-browser safe-dia-restart --enable-cdp
+```
+
+`safe-stop` detaches only reusable CDP daemon sessions and leaves Dia running.
+`safe-dia-stop` sends `SIGTERM` only to verified default Dia root processes;
+it never targets any process with `--user-data-dir` and never force-kills.
+`safe-dia-restart` waits for the extension bridge to reconnect. Keep CDP off by
+default and use `--enable-cdp` only when an advanced command genuinely needs it.
 
 List Dia tabs without CDP:
 
@@ -128,6 +145,9 @@ scripts/dia-cdp --restart --force-kill list
 - Cookies, downloads, clipboard access, request observation or modification,
   file URL access, and incognito access stay unsupported unless the user asks
   for one capability and accepts its specific permission trade-off.
+- Chrome does not allow `debugger` as an optional permission. Future on/off
+  settings must control CDP exposure or attach/detach behavior rather than claim
+  to revoke that manifest permission dynamically.
 - The extension keeps its local WebSocket alive with a 20-second heartbeat and
   uses a 30-second alarm to reconnect after worker suspension or relay startup.
 - A user LaunchAgent starts the relay at login and restarts it after crashes.

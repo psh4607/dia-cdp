@@ -39,6 +39,36 @@ describe('dia-extension CLI', () => {
       cdpArgs: ['status'],
       requiresConsent: false,
     });
+    assert.deepEqual(client.classifyRoute(['safe-stop']), {
+      route: 'cdp',
+      cdpArgs: ['stop'],
+      requiresConsent: false,
+    });
+    assert.deepEqual(client.classifyRoute(['safe-stop', 'ABCDEF12']), {
+      route: 'cdp',
+      cdpArgs: ['stop', 'ABCDEF12'],
+      requiresConsent: false,
+    });
+    assert.deepEqual(client.classifyRoute(['dia-status']), {
+      route: 'lifecycle',
+      lifecycleArgs: ['status'],
+      waitForBridge: false,
+    });
+    assert.deepEqual(client.classifyRoute(['dia-start']), {
+      route: 'lifecycle',
+      lifecycleArgs: ['start'],
+      waitForBridge: true,
+    });
+    assert.deepEqual(client.classifyRoute(['safe-dia-stop']), {
+      route: 'lifecycle',
+      lifecycleArgs: ['stop'],
+      waitForBridge: false,
+    });
+    assert.deepEqual(client.classifyRoute(['safe-dia-restart', '--enable-cdp']), {
+      route: 'lifecycle',
+      lifecycleArgs: ['restart', '--enable-cdp'],
+      waitForBridge: true,
+    });
     assert.throws(
       () => client.classifyRoute(['--cdp', 'click', 'ABCDEF12', '#save']),
       /--allow-cdp/,
@@ -98,5 +128,59 @@ describe('dia-extension CLI', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('waits for the extension bridge after a safe Dia start or restart', async () => {
+    assert.equal(typeof client.waitForBridgeConnection, 'function');
+    if (!client.waitForBridgeConnection) return;
+    const responses = [
+      { relay: 'running', extensionConnected: false },
+      { relay: 'running', extensionConnected: true },
+    ];
+    let waits = 0;
+    const result = await client.waitForBridgeConnection({
+      requestHealth: async () => responses.shift(),
+      wait: async () => { waits += 1; },
+      timeoutMs: 1_000,
+    });
+
+    assert.equal(result.extensionConnected, true);
+    assert.equal(waits, 1);
+  });
+
+  it('waits for a newer bridge connection after restarting Dia', async () => {
+    const responses = [
+      { relay: 'running', extensionConnected: true, connectionGeneration: 4 },
+      { relay: 'running', extensionConnected: true, connectionGeneration: 5 },
+    ];
+    let waits = 0;
+    const result = await client.waitForBridgeConnection({
+      requestHealth: async () => responses.shift(),
+      wait: async () => { waits += 1; },
+      timeoutMs: 1_000,
+      minimumGeneration: 5,
+    });
+
+    assert.equal(result.connectionGeneration, 5);
+    assert.equal(waits, 1);
+  });
+
+  it('waits for restored tabs before declaring Dia ready', async () => {
+    const tabResponses = [[], [{ id: 10 }]];
+    let waits = 0;
+    const result = await client.waitForBridgeConnection({
+      requestHealth: async () => ({
+        relay: 'running',
+        extensionConnected: true,
+        connectionGeneration: 2,
+      }),
+      requestTabs: async () => tabResponses.shift(),
+      requireTab: true,
+      wait: async () => { waits += 1; },
+      timeoutMs: 1_000,
+    });
+
+    assert.equal(result.connectionGeneration, 2);
+    assert.equal(waits, 1);
   });
 });

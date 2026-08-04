@@ -37,6 +37,8 @@ const pending = new Map();
 const queuedRequests = [];
 let bridgeSocket;
 let bridgeSocketBuffer = Buffer.alloc(0);
+let connectionGeneration = 0;
+let extensionVersion;
 
 function writeSocketResponse(connection, response) {
   connection.end(`${JSON.stringify(response)}\n`);
@@ -81,6 +83,7 @@ function encodeWebSocketFrame(value, opcode = 0x1) {
 function handleBridgeResponse(bridgeResponse) {
   if (bridgeResponse?.type === 'heartbeat') return;
   if (bridgeResponse?.type === 'hello') {
+    extensionVersion = bridgeResponse.version;
     if (expectedExtensionVersion && bridgeResponse.version !== expectedExtensionVersion) {
       bridgeSocket?.write(encodeWebSocketFrame(JSON.stringify({ type: 'reload' })));
     }
@@ -168,7 +171,9 @@ function queueBridgeRequest(connection, request) {
       ok: true,
       result: {
         relay: 'running',
-        extensionConnected: Boolean(bridgeSocket?.writable),
+        extensionConnected: Boolean(bridgeSocket?.writable && extensionVersion),
+        connectionGeneration,
+        extensionVersion,
         pendingRequests: pending.size,
         queuedRequests: queuedRequests.length,
         uptimeSeconds: Math.floor(process.uptime()),
@@ -233,11 +238,14 @@ httpServer.on('upgrade', (request, socket) => {
   if (bridgeSocket && bridgeSocket !== socket) bridgeSocket.destroy();
   bridgeSocket = socket;
   bridgeSocketBuffer = Buffer.alloc(0);
+  connectionGeneration += 1;
+  extensionVersion = undefined;
   socket.on('data', consumeWebSocketFrames);
   socket.on('close', () => {
     if (bridgeSocket !== socket) return;
     bridgeSocket = undefined;
     bridgeSocketBuffer = Buffer.alloc(0);
+    extensionVersion = undefined;
     rejectPending('Dia extension relay disconnected');
   });
   socket.on('error', () => {});

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dia Codex Bridge",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Inspect and interact with Dia pages through a local Codex CLI without recurring remote-debugging prompts.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzDLttT3Vdc26Gn757GRD67rwv15lhsKNAv/g33srIc1K+3nnBCsJnaref16VlenQWWT41rFKPb8neMLWMH67DmOWU6lYvYriRsiFhXhycRgARbsGcEG+U/JE5X1XqhtxsoBm6Z5kXufXsbiqosxg50DFViemZtTrVV5AldBjSM66GhxOfAVYh05GkiEnDGUxuwfY7yBvG9pkKBRePfxzW/D6sTP++MD4MXbqX9MapU+MazKgYhC5pTe/+Dm/daQfR9T95ZMZ1JwiyfR3DQ4HPWT+rYteTDTb5ZC/yRqhrs8MjUirFI8aC4D3s7FSGRmuPoCMdlGG4dzE1BNDdqmatQIDAQAB",
   "permissions": [

@@ -162,6 +162,14 @@ describe('Dia extension bridge', () => {
       socket.addEventListener('open', resolveOpen, { once: true });
       socket.addEventListener('error', reject, { once: true });
     });
+    socket.send(JSON.stringify({ type: 'hello', version: '0.6.0' }));
+    const health = await sendBridgeRequest('relay.health', {}, {
+      autoStart: false,
+      socketPath,
+      timeoutMs: 500,
+    });
+    assert.equal(health.connectionGeneration, 1);
+    assert.equal(health.extensionVersion, '0.6.0');
     const simulatedExtension = new Promise((resolveResponse, reject) => {
       socket.addEventListener('message', (event) => {
         try {
