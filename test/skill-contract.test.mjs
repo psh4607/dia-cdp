@@ -20,6 +20,10 @@ describe('dia-cdp bundled skill', () => {
     assert.match(skill, /scripts\/dia-browser/);
     assert.match(skill, /scripts\/dia-automation start/);
     assert.match(skill, /scripts\/dia-extension window-focus/);
+    assert.match(skill, /scripts\/dia-browser net/);
+    assert.match(skill, /scripts\/dia-browser eval/);
+    assert.match(skill, /capability page-eval on/);
+    assert.match(skill, /response bod/i);
     assert.match(skill, /scripts\/dia-browser safe-stop/);
     assert.match(skill, /scripts\/dia-browser safe-dia-stop/);
     assert.match(skill, /scripts\/dia-browser safe-dia-restart/);

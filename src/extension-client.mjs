@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REQUEST_TIMEOUT_MS = 45_000;
+const LONG_REQUEST_TIMEOUT_MS = 310_000;
 const START_TIMEOUT_MS = 3_000;
 const BRIDGE_READY_TIMEOUT_MS = 45_000;
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -108,7 +109,7 @@ async function startRelay(targetSocket) {
 
 export async function sendBridgeRequest(command, args = {}, options = {}) {
   const targetSocket = options.socketPath || socketPath;
-  const timeoutMs = options.timeoutMs || REQUEST_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs || bridgeRequestTimeout(command);
 
   try {
     return await requestOnce(command, args, targetSocket, timeoutMs);
@@ -117,6 +118,10 @@ export async function sendBridgeRequest(command, args = {}, options = {}) {
     await startRelay(targetSocket);
     return requestOnce(command, args, targetSocket, timeoutMs);
   }
+}
+
+export function bridgeRequestTimeout(command) {
+  return command === 'page.loadall' ? LONG_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
 }
 
 const USAGE = `dia-extension <command> [args] [--json]
@@ -144,13 +149,17 @@ Commands:
   select <tab-id> <selector> <value> Select a form option
   key <tab-id> <selector> <key>     Dispatch a key press
   shot <tab-id> <path>              Capture the visible tab as PNG
+  net <tab-id>                      Read bounded Resource Timing entries
+  eval <tab-id> <expression>        Evaluate JS when page-eval is enabled
+  clickxy <tab-id> <x> <y>          Best-effort DOM click at viewport coordinates
+  loadall <tab-id> <selector> [ms]  Click until an element disappears
+
+Capability settings:
+  capabilities                      Show persistent bridge capability settings
+  capability page-eval <on|off>     Enable or disable arbitrary page evaluation
 
 CDP-only commands (require --allow-cdp and may show Dia approval):
-  net <target>                      Read network performance entries
-  eval <target> <expression>        Evaluate JavaScript through CDP
   evalraw <target> <method> [json]  Send a raw CDP command
-  clickxy <target> <x> <y>          Click viewport coordinates through CDP
-  loadall <target> <selector> [ms]  Repeatedly click through CDP
   --allow-cdp --cdp <command> ...   Force any command through CDP
 
 Session commands (never start a new CDP connection):
@@ -230,6 +239,58 @@ export function parseCliArgs(args) {
         bridgeCommand: 'page.snapshot',
         bridgeArgs: { tabId: numericTabId(args[1], command) },
       };
+    case 'net':
+    case 'network':
+      return {
+        bridgeCommand: 'page.network',
+        bridgeArgs: { tabId: numericTabId(args[1], command) },
+      };
+    case 'eval':
+      return {
+        bridgeCommand: 'page.eval',
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          expression: joinedArg(args, 2, command, 'a JavaScript expression'),
+        },
+      };
+    case 'clickxy': {
+      const x = Number(args[2]);
+      const y = Number(args[3]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error('clickxy requires numeric x and y values');
+      }
+      return {
+        bridgeCommand: 'page.clickxy',
+        bridgeArgs: { tabId: numericTabId(args[1], command), x, y },
+      };
+    }
+    case 'loadall': {
+      const intervalMs = args[3] === undefined ? 1_500 : Number(args[3]);
+      if (!Number.isFinite(intervalMs) || intervalMs < 0) {
+        throw new Error('loadall interval must be a non-negative number');
+      }
+      return {
+        bridgeCommand: 'page.loadall',
+        bridgeArgs: {
+          tabId: numericTabId(args[1], command),
+          selector: requiredArg(args[2], command, 'a selector'),
+          intervalMs,
+        },
+      };
+    }
+    case 'capabilities':
+      return { bridgeCommand: 'relay.capabilities.get', bridgeArgs: {} };
+    case 'capability': {
+      const name = requiredArg(args[1], command, 'a capability name');
+      const state = requiredArg(args[2], command, 'on or off');
+      if (!['on', 'off'].includes(state)) {
+        throw new Error('capability state must be on or off');
+      }
+      return {
+        bridgeCommand: 'relay.capabilities.set',
+        bridgeArgs: { name, enabled: state === 'on' },
+      };
+    }
     case 'query':
     case 'click':
     case 'focus':
@@ -300,7 +361,7 @@ export function parseCliArgs(args) {
   }
 }
 
-const CDP_ONLY_COMMANDS = new Set(['net', 'eval', 'evalraw', 'clickxy', 'loadall']);
+const CDP_ONLY_COMMANDS = new Set(['evalraw']);
 
 export function classifyRoute(args) {
   const allowCdp = args.includes('--allow-cdp');

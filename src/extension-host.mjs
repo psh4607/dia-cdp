@@ -10,15 +10,23 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_EXTENSION_ID,
   DEFAULT_RELAY_PORT,
+  bridgePaths,
   ensureBridgeToken,
 } from './bridge-config.mjs';
+import {
+  readBridgeCapabilities,
+  setBridgeCapability,
+} from './bridge-capabilities.mjs';
 
 const REQUEST_TIMEOUT_MS = 45_000;
+const LONG_REQUEST_TIMEOUT_MS = 310_000;
 const MAX_BODY_BYTES = 16_777_216;
 const socketPath = process.env.DIA_EXTENSION_SOCKET
   || resolve(homedir(), '.cache', 'dia-cdp', 'extension-bridge.sock');
 const relayPort = Number(process.env.DIA_EXTENSION_RELAY_PORT || DEFAULT_RELAY_PORT);
 const bridgeToken = ensureBridgeToken();
+const capabilitiesPath = process.env.DIA_EXTENSION_CAPABILITIES
+  || bridgePaths().capabilitiesPath;
 const allowedOrigin = `chrome-extension://${process.env.DIA_EXTENSION_ID || DEFAULT_EXTENSION_ID}`;
 const currentDir = dirname(fileURLToPath(import.meta.url));
 let expectedExtensionVersion;
@@ -182,7 +190,50 @@ function queueBridgeRequest(connection, request) {
     return;
   }
 
+  if (request.command === 'relay.capabilities.get') {
+    writeSocketResponse(connection, {
+      id: request.id,
+      ok: true,
+      result: readBridgeCapabilities(capabilitiesPath),
+    });
+    return;
+  }
+
+  if (request.command === 'relay.capabilities.set') {
+    if (typeof request.args?.enabled !== 'boolean') {
+      writeSocketResponse(connection, {
+        id: request.id,
+        ok: false,
+        error: 'capability enabled state must be a boolean',
+      });
+      return;
+    }
+    try {
+      const result = setBridgeCapability(
+        capabilitiesPath,
+        request.args.name,
+        request.args.enabled,
+      );
+      writeSocketResponse(connection, { id: request.id, ok: true, result });
+    } catch (error) {
+      writeSocketResponse(connection, { id: request.id, ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (request.command === 'page.eval' && !readBridgeCapabilities(capabilitiesPath).pageEval) {
+    writeSocketResponse(connection, {
+      id: request.id,
+      ok: false,
+      error: 'page-eval capability is disabled; enable it explicitly before evaluating JavaScript',
+    });
+    return;
+  }
+
   const bridgeId = nextRequestId++;
+  const requestTimeoutMs = request.command === 'page.loadall'
+    ? LONG_REQUEST_TIMEOUT_MS
+    : REQUEST_TIMEOUT_MS;
   const timer = setTimeout(() => {
     const entry = pending.get(bridgeId);
     if (!entry) return;
@@ -192,9 +243,9 @@ function queueBridgeRequest(connection, request) {
     writeSocketResponse(entry.connection, {
       id: entry.requestId,
       ok: false,
-      error: `extension request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      error: `extension request timed out after ${requestTimeoutMs}ms`,
     });
-  }, REQUEST_TIMEOUT_MS);
+  }, requestTimeoutMs);
 
   pending.set(bridgeId, { connection, requestId: request.id, timer });
   queuedRequests.push({

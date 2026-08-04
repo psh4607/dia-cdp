@@ -1,4 +1,8 @@
-import { executePageOperation } from './page-operations.js';
+import {
+  executeLoadAll,
+  executePageEvaluation,
+  executePageOperation,
+} from './page-operations.js';
 
 const TAB_FIELDS = [
   'id',
@@ -23,6 +27,8 @@ const PAGE_OPERATIONS = new Set([
   'scroll',
   'select',
   'key',
+  'network',
+  'clickxy',
 ]);
 
 export function sanitizeTab(tab) {
@@ -72,6 +78,26 @@ export async function handleBridgeRequest(chromeApi, request) {
   }
 
   const args = request.args && typeof request.args === 'object' ? request.args : {};
+
+  if (request.command === 'page.eval') {
+    const [{ result }] = await chromeApi.scripting.executeScript({
+      target: { tabId: requireTabId(args.tabId) },
+      world: 'MAIN',
+      func: executePageEvaluation,
+      args: [args.expression],
+    });
+    return result;
+  }
+
+  if (request.command === 'page.loadall') {
+    const { tabId, ...operationArgs } = args;
+    const [{ result }] = await chromeApi.scripting.executeScript({
+      target: { tabId: requireTabId(tabId) },
+      func: executeLoadAll,
+      args: [operationArgs],
+    });
+    return result;
+  }
 
   const pageOperation = request.command.startsWith('page.')
     ? request.command.slice('page.'.length)

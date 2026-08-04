@@ -1,11 +1,17 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { executePageOperation } from '../extension/page-operations.js';
+import {
+  executeLoadAll,
+  executePageEvaluation,
+  executePageOperation,
+} from '../extension/page-operations.js';
 
 const originalDocument = globalThis.document;
 const originalLocation = globalThis.location;
 const originalWindow = globalThis.window;
 const originalKeyboardEvent = globalThis.KeyboardEvent;
+const originalMouseEvent = globalThis.MouseEvent;
+const originalPerformance = globalThis.performance;
 
 afterEach(() => {
   if (originalDocument === undefined) delete globalThis.document;
@@ -16,6 +22,9 @@ afterEach(() => {
   else globalThis.window = originalWindow;
   if (originalKeyboardEvent === undefined) delete globalThis.KeyboardEvent;
   else globalThis.KeyboardEvent = originalKeyboardEvent;
+  if (originalMouseEvent === undefined) delete globalThis.MouseEvent;
+  else globalThis.MouseEvent = originalMouseEvent;
+  globalThis.performance = originalPerformance;
 });
 
 describe('Dia page operations', () => {
@@ -60,6 +69,86 @@ describe('Dia page operations', () => {
         ariaLabel: 'Save changes',
       }],
       elementsTruncated: false,
+    });
+  });
+
+  it('returns bounded resource timing entries without CDP', () => {
+    globalThis.performance = {
+      getEntriesByType: () => [{
+        name: 'https://example.com/app.js',
+        initiatorType: 'script',
+        startTime: 12.4,
+        duration: 35.6,
+        transferSize: 1024,
+        encodedBodySize: 900,
+        decodedBodySize: 1800,
+      }],
+    };
+
+    assert.deepEqual(executePageOperation('network'), {
+      entries: [{
+        name: 'https://example.com/app.js',
+        type: 'script',
+        startTime: 12,
+        duration: 36,
+        transferSize: 1024,
+        encodedBodySize: 900,
+        decodedBodySize: 1800,
+      }],
+      truncated: false,
+    });
+  });
+
+  it('evaluates JavaScript with bounded serializable results', async () => {
+    globalThis.document = { title: 'Dia Eval' };
+
+    assert.deepEqual(await executePageEvaluation('Promise.resolve(document.title)'), {
+      type: 'string',
+      value: 'Dia Eval',
+      truncated: false,
+    });
+    assert.deepEqual(await executePageEvaluation('({ answer: 42 })'), {
+      type: 'object',
+      value: { answer: 42 },
+      truncated: false,
+    });
+  });
+
+  it('clicks the element at viewport coordinates without CDP', () => {
+    let clicks = 0;
+    const element = {
+      localName: 'button',
+      click: () => { clicks += 1; },
+    };
+    globalThis.document = { elementFromPoint: (x, y) => x === 120 && y === 240 ? element : null };
+
+    assert.deepEqual(executePageOperation('clickxy', { x: 120, y: 240 }), {
+      clicked: true,
+      x: 120,
+      y: 240,
+      tag: 'button',
+    });
+    assert.equal(clicks, 1);
+  });
+
+  it('repeatedly clicks until the selector disappears with a hard click bound', async () => {
+    let remaining = 2;
+    const button = {
+      scrollIntoView() {},
+      click() { remaining -= 1; },
+    };
+    globalThis.document = {
+      querySelector: () => remaining > 0 ? button : null,
+    };
+
+    assert.deepEqual(await executeLoadAll({
+      selector: '.load-more',
+      intervalMs: 0,
+      maxClicks: 10,
+    }), {
+      selector: '.load-more',
+      clicks: 2,
+      stoppedBecause: 'missing',
     });
   });
 

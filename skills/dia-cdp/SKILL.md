@@ -8,7 +8,8 @@ description: Use when inspecting, debugging, capturing, or interacting with page
 Use the plugin-bundled extension bridge first. It avoids Dia's remote-debugging
 approval dialog for tab management, page inspection, interaction, and visible
 screenshots. Use the `dia-cdp` CLI only as a CDP fallback for capabilities the
-extension cannot provide, such as network response bodies and performance traces.
+extension cannot provide, such as network response bodies, raw CDP domains, and
+performance traces.
 
 Do not call the old `chrome-cdp` skill or `~/.codex/skills/chrome-cdp/scripts/cdp.mjs`
 for Dia pages. Use the bundled `scripts/dia-cdp` wrapper from this skill
@@ -25,13 +26,24 @@ scripts/dia-browser list
 scripts/dia-browser snapshot <tab-id>
 scripts/dia-browser click <tab-id> '#save'
 scripts/dia-browser shot <tab-id> /tmp/dia.png
+scripts/dia-browser net <tab-id>
 ```
 
-For an advanced command that genuinely needs CDP:
+Arbitrary JavaScript is capability-gated and disabled by default. Enable it only
+when the user has authorized page evaluation, then target a numeric extension
+tab id:
 
 ```bash
-scripts/dia-browser --allow-cdp net <cdp-target>
-scripts/dia-browser --allow-cdp eval <cdp-target> 'document.title'
+scripts/dia-browser capabilities
+scripts/dia-browser capability page-eval on
+scripts/dia-browser eval <tab-id> 'document.title'
+scripts/dia-browser capability page-eval off
+```
+
+For an advanced command that genuinely needs raw CDP:
+
+```bash
+scripts/dia-browser --allow-cdp --cdp evalraw <cdp-target> DOM.getDocument
 ```
 
 Inspect or stop existing CDP sessions without opening a new CDP connection:
@@ -79,6 +91,9 @@ scripts/dia-extension select <tab-id> '#team' backend
 scripts/dia-extension key <tab-id> '#search' Enter
 scripts/dia-extension shot <tab-id> /tmp/dia.png
 scripts/dia-extension window-focus <tab-id>
+scripts/dia-browser net <tab-id>
+scripts/dia-browser clickxy <tab-id> 120 240
+scripts/dia-browser loadall <tab-id> '.load-more' 1000
 ```
 
 Manage navigation without CDP:
@@ -139,8 +154,11 @@ scripts/dia-cdp --restart --force-kill list
 - The extension bridge requests `tabs`, `scripting`, and `<all_urls>` so one
   install-time grant replaces recurring remote-debugging approvals for ordinary
   web pages. It does not request `debugger` or `nativeMessaging`.
-- The bridge exposes fixed operations and deliberately does not accept arbitrary
-  JavaScript evaluation.
+- The bridge exposes fixed operations by default. Arbitrary main-world
+  JavaScript evaluation is accepted only while the private relay capability
+  `page-eval` is enabled. Results and expressions are bounded.
+- `net` returns the page's bounded Resource Timing entries. Response bodies,
+  raw request interception, and performance traces still require CDP.
 - Window focus uses the existing extension APIs and adds no manifest permission.
 - Cookies, downloads, clipboard access, request observation or modification,
   file URL access, and incognito access stay unsupported unless the user asks

@@ -18,11 +18,12 @@ const extensionInstallDirectory = resolve(homedir(), '.local', 'share', 'dia-cdp
 const relayInstallDirectory = resolve(homedir(), '.local', 'share', 'dia-cdp', 'relay');
 const installedRelayScript = resolve(relayInstallDirectory, 'extension-host.mjs');
 const installedConfigScript = resolve(relayInstallDirectory, 'bridge-config.mjs');
+const installedCapabilitiesScript = resolve(relayInstallDirectory, 'bridge-capabilities.mjs');
 const launchAgentLabel = 'com.psh4607.dia-cdp.relay';
 const launchAgentsDirectory = resolve(homedir(), 'Library', 'LaunchAgents');
 const launchAgentPath = resolve(launchAgentsDirectory, `${launchAgentLabel}.plist`);
 const relayLogDirectory = resolve(homedir(), '.cache', 'dia-cdp');
-const { tokenPath } = bridgePaths();
+const { capabilitiesPath, tokenPath } = bridgePaths();
 
 const USAGE = `install-dia-extension-host [--dry-run]
 
@@ -43,6 +44,7 @@ try {
       extensionInstallDirectory,
       relayInstallDirectory,
       tokenPath,
+      capabilitiesPath,
       relayOrigin: `http://127.0.0.1:${DEFAULT_RELAY_PORT}`,
       launchAgentPath,
     }, null, 2));
@@ -71,8 +73,10 @@ try {
     mkdirSync(relayInstallDirectory, { recursive: true, mode: 0o700 });
     copyFileSync(resolve(currentDir, 'extension-host.mjs'), installedRelayScript);
     copyFileSync(resolve(currentDir, 'bridge-config.mjs'), installedConfigScript);
+    copyFileSync(resolve(currentDir, 'bridge-capabilities.mjs'), installedCapabilitiesScript);
     chmodSync(installedRelayScript, 0o700);
     chmodSync(installedConfigScript, 0o600);
+    chmodSync(installedCapabilitiesScript, 0o600);
 
     mkdirSync(launchAgentsDirectory, { recursive: true, mode: 0o700 });
     mkdirSync(relayLogDirectory, { recursive: true, mode: 0o700 });

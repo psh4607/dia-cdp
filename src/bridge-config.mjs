@@ -10,6 +10,13 @@ export function bridgePaths(homeDirectory = homedir()) {
   return {
     socketPath: resolve(homeDirectory, '.cache', 'dia-cdp', 'extension-bridge.sock'),
     tokenPath: resolve(homeDirectory, '.local', 'share', 'dia-cdp', 'bridge-token'),
+    capabilitiesPath: resolve(
+      homeDirectory,
+      '.local',
+      'share',
+      'dia-cdp',
+      'capabilities.json',
+    ),
   };
 }
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
@@ -70,6 +70,49 @@ function requestWebSocketUpgrade({ port, token, origin }) {
 }
 
 describe('Dia extension bridge', () => {
+  it('persists capability settings and blocks page evaluation in the relay', async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-capabilities-'));
+    temporaryDirectories.push(directory);
+    const socketPath = resolve(directory, 'bridge.sock');
+    const capabilitiesPath = resolve(directory, 'capabilities.json');
+    const relayPort = await getAvailablePort();
+    const child = spawn(process.execPath, [resolve(root, 'src/extension-host.mjs')], {
+      env: {
+        ...process.env,
+        DIA_EXTENSION_RELAY_PORT: String(relayPort),
+        DIA_EXTENSION_SOCKET: socketPath,
+        DIA_EXTENSION_TOKEN: 'capability-test-token',
+        DIA_EXTENSION_CAPABILITIES: capabilitiesPath,
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    childProcesses.push(child);
+    await waitForPath(socketPath);
+
+    assert.deepEqual(await sendBridgeRequest('relay.capabilities.get', {}, {
+      autoStart: false,
+      socketPath,
+      timeoutMs: 500,
+    }), { pageEval: false });
+    await assert.rejects(
+      sendBridgeRequest('page.eval', { tabId: 10, expression: 'document.title' }, {
+        autoStart: false,
+        socketPath,
+        timeoutMs: 500,
+      }),
+      /page-eval capability is disabled/,
+    );
+    assert.deepEqual(await sendBridgeRequest('relay.capabilities.set', {
+      name: 'page-eval',
+      enabled: true,
+    }, {
+      autoStart: false,
+      socketPath,
+      timeoutMs: 500,
+    }), { pageEval: true });
+    assert.deepEqual(JSON.parse(readFileSync(capabilitiesPath, 'utf8')), { pageEval: true });
+  });
+
   it('reports relay health without waiting for the browser extension', async () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-health-'));
     temporaryDirectories.push(directory);

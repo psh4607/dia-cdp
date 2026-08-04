@@ -29,9 +29,14 @@ describe('dia-extension CLI', () => {
       bridgeCommand: 'page.snapshot',
       bridgeArgs: { tabId: 10 },
     });
-    assert.deepEqual(client.classifyRoute(['net', 'ABCDEF12']), {
+    assert.deepEqual(client.classifyRoute(['net', '10']), {
+      route: 'extension',
+      bridgeCommand: 'page.network',
+      bridgeArgs: { tabId: 10 },
+    });
+    assert.deepEqual(client.classifyRoute(['evalraw', 'ABCDEF12', 'DOM.getDocument']), {
       route: 'cdp',
-      cdpArgs: ['net', 'ABCDEF12'],
+      cdpArgs: ['evalraw', 'ABCDEF12', 'DOM.getDocument'],
       requiresConsent: true,
     });
     assert.deepEqual(client.classifyRoute(['cdp-status']), {
@@ -109,12 +114,36 @@ describe('dia-extension CLI', () => {
       bridgeCommand: 'windows.focusTab',
       bridgeArgs: { tabId: 10 },
     });
+    assert.deepEqual(client.parseCliArgs(['net', '10']), {
+      bridgeCommand: 'page.network',
+      bridgeArgs: { tabId: 10 },
+    });
+    assert.deepEqual(client.parseCliArgs(['eval', '10', 'document.title']), {
+      bridgeCommand: 'page.eval',
+      bridgeArgs: { tabId: 10, expression: 'document.title' },
+    });
+    assert.deepEqual(client.parseCliArgs(['clickxy', '10', '120', '240']), {
+      bridgeCommand: 'page.clickxy',
+      bridgeArgs: { tabId: 10, x: 120, y: 240 },
+    });
+    assert.deepEqual(client.parseCliArgs(['loadall', '10', '.load-more', '250']), {
+      bridgeCommand: 'page.loadall',
+      bridgeArgs: { tabId: 10, selector: '.load-more', intervalMs: 250 },
+    });
+    assert.deepEqual(client.parseCliArgs(['capabilities']), {
+      bridgeCommand: 'relay.capabilities.get',
+      bridgeArgs: {},
+    });
+    assert.deepEqual(client.parseCliArgs(['capability', 'page-eval', 'on']), {
+      bridgeCommand: 'relay.capabilities.set',
+      bridgeArgs: { name: 'page-eval', enabled: true },
+    });
     assert.deepEqual(client.parseCliArgs(['shot', '10', '/tmp/dia.png']), {
       bridgeCommand: 'page.screenshot',
       bridgeArgs: { tabId: 10 },
       outputPath: '/tmp/dia.png',
     });
-    assert.throws(() => client.parseCliArgs(['eval', '10', 'alert(1)']), /unknown command/);
+    assert.throws(() => client.parseCliArgs(['capability', 'page-eval', 'maybe']), /on or off/);
     assert.throws(() => client.parseCliArgs(['scroll-by', '10', 'left', '20']), /numeric x and y/);
   });
 
@@ -128,6 +157,11 @@ describe('dia-extension CLI', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('allows bounded load-all requests to outlive the normal bridge timeout', () => {
+    assert.equal(client.bridgeRequestTimeout('page.snapshot'), 45_000);
+    assert.equal(client.bridgeRequestTimeout('page.loadall'), 310_000);
   });
 
   it('waits for the extension bridge after a safe Dia start or restart', async () => {

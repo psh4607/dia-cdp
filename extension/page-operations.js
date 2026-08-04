@@ -120,6 +120,38 @@ export function executePageOperation(operation, args = {}) {
     }
     case 'query':
       return summarizeElement(findElement(args.selector));
+    case 'network': {
+      const allEntries = performance.getEntriesByType('resource');
+      const maxEntries = Number.isInteger(args.maxEntries) && args.maxEntries > 0
+        ? Math.min(args.maxEntries, 1_000)
+        : 500;
+      const entries = allEntries.slice(-maxEntries).map((entry) => ({
+        name: String(entry.name || '').slice(0, 2_048),
+        type: String(entry.initiatorType || 'other').slice(0, 40),
+        startTime: Math.round(Number(entry.startTime || 0)),
+        duration: Math.round(Number(entry.duration || 0)),
+        transferSize: Number(entry.transferSize || 0),
+        encodedBodySize: Number(entry.encodedBodySize || 0),
+        decodedBodySize: Number(entry.decodedBodySize || 0),
+      }));
+      return { entries, truncated: allEntries.length > entries.length };
+    }
+    case 'clickxy': {
+      const x = Number(args.x);
+      const y = Number(args.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
+        throw new Error('x and y must be non-negative finite numbers');
+      }
+      const element = document.elementFromPoint(x, y);
+      if (!element) throw new Error(`no element found at viewport coordinates ${x},${y}`);
+      element.click();
+      return {
+        clicked: true,
+        x,
+        y,
+        tag: String(element.localName || element.tagName || '').toLowerCase(),
+      };
+    }
     case 'focus': {
       findElement(args.selector).focus();
       return { focused: true, selector: args.selector };
@@ -183,4 +215,71 @@ export function executePageOperation(operation, args = {}) {
     default:
       throw new Error(`unsupported page operation: ${String(operation)}`);
   }
+}
+
+export async function executePageEvaluation(expression, maxChars = 200_000) {
+  if (typeof expression !== 'string' || expression.trim() === '') {
+    throw new Error('expression must be a non-empty string');
+  }
+  if (expression.length > 100_000) throw new Error('expression exceeds 100000 characters');
+  const limit = Number.isInteger(maxChars) && maxChars > 0
+    ? Math.min(maxChars, 200_000)
+    : 200_000;
+  const value = await (0, eval)(expression);
+  const type = value === null ? 'null' : typeof value;
+  if (value === undefined) return { type: 'undefined', truncated: false };
+  if (type === 'string') {
+    return { type, value: value.slice(0, limit), truncated: value.length > limit };
+  }
+  if (['number', 'boolean'].includes(type) || value === null) {
+    return { type, value, truncated: false };
+  }
+
+  const seen = new WeakSet();
+  const json = JSON.stringify(value, (_key, nested) => {
+    if (typeof nested === 'bigint') return `${nested}n`;
+    if (typeof nested === 'function') return `[Function ${nested.name || 'anonymous'}]`;
+    if (typeof nested === 'symbol') return String(nested);
+    if (nested && typeof nested === 'object') {
+      if (seen.has(nested)) return '[Circular]';
+      seen.add(nested);
+    }
+    return nested;
+  });
+  if (json === undefined) return { type, value: String(value), truncated: false };
+  if (json.length > limit) {
+    return { type, value: json.slice(0, limit), format: 'json', truncated: true };
+  }
+  return { type, value: JSON.parse(json), truncated: false };
+}
+
+export async function executeLoadAll(args = {}) {
+  const selector = String(args.selector || '');
+  if (!selector) throw new Error('selector must be a non-empty string');
+  const intervalMs = Number(args.intervalMs ?? 1_500);
+  if (!Number.isFinite(intervalMs) || intervalMs < 0) {
+    throw new Error('intervalMs must be a non-negative number');
+  }
+  const maxClicks = Number.isInteger(args.maxClicks) && args.maxClicks > 0
+    ? Math.min(args.maxClicks, 200)
+    : 200;
+  const deadline = Date.now() + 300_000;
+  let clicks = 0;
+  while (clicks < maxClicks && Date.now() < deadline) {
+    const element = document.querySelector(selector);
+    if (!element) {
+      return { selector, clicks, stoppedBecause: 'missing' };
+    }
+    element.scrollIntoView({ block: 'center', inline: 'center' });
+    element.click();
+    clicks += 1;
+    if (intervalMs > 0) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, intervalMs));
+    }
+  }
+  return {
+    selector,
+    clicks,
+    stoppedBecause: clicks >= maxClicks ? 'max-clicks' : 'timeout',
+  };
 }

@@ -151,6 +151,35 @@ describe('Dia extension commands', () => {
     assert.equal(typeof chromeApi.scriptCalls[0].func, 'function');
   });
 
+  it('runs network, eval, coordinate click, and load-all without chrome.debugger', async () => {
+    const chromeApi = createChromeMock();
+    await handleBridgeRequest(chromeApi, {
+      command: 'page.network', args: { tabId: 10 },
+    });
+    await handleBridgeRequest(chromeApi, {
+      command: 'page.eval', args: { tabId: 10, expression: 'document.title' },
+    });
+    await handleBridgeRequest(chromeApi, {
+      command: 'page.clickxy', args: { tabId: 10, x: 120, y: 240 },
+    });
+    await handleBridgeRequest(chromeApi, {
+      command: 'page.loadall',
+      args: { tabId: 10, selector: '.load-more', intervalMs: 250 },
+    });
+
+    assert.equal(chromeApi.scriptCalls.length, 4);
+    assert.equal(chromeApi.scriptCalls[0].args[0], 'network');
+    assert.equal(chromeApi.scriptCalls[1].world, 'MAIN');
+    assert.equal(chromeApi.scriptCalls[1].func.name, 'executePageEvaluation');
+    assert.deepEqual(chromeApi.scriptCalls[1].args, ['document.title']);
+    assert.equal(chromeApi.scriptCalls[2].args[0], 'clickxy');
+    assert.equal(chromeApi.scriptCalls[3].func.name, 'executeLoadAll');
+    assert.deepEqual(chromeApi.scriptCalls[3].args, [{
+      selector: '.load-more',
+      intervalMs: 250,
+    }]);
+  });
+
   it('navigates, reloads, creates, and closes tabs', async () => {
     const chromeApi = createChromeMock();
 
@@ -219,6 +248,10 @@ describe('Dia extension commands', () => {
     );
     await assert.rejects(
       handleBridgeRequest(chromeApi, { command: 'page.eval' }),
+      /tabId must be a non-negative integer/,
+    );
+    await assert.rejects(
+      handleBridgeRequest(chromeApi, { command: 'page.unsupported' }),
       /unsupported command/,
     );
   });

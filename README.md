@@ -185,14 +185,42 @@ bin/dia-browser list
 bin/dia-browser snapshot <tab-id>
 bin/dia-browser click <tab-id> '#save'
 bin/dia-browser shot <tab-id> /tmp/dia.png
+bin/dia-browser net <tab-id>
 ```
+
+Arbitrary JavaScript evaluation is disabled by default and enforced by the
+local relay. Enable it only for users or agents that should be able to run code
+in ordinary web pages:
+
+```bash
+bin/dia-browser capabilities
+bin/dia-browser capability page-eval on
+bin/dia-browser eval <tab-id> 'document.title'
+bin/dia-browser capability page-eval off
+```
+
+The setting is persisted with mode `0600` in
+`~/.local/share/dia-cdp/capabilities.json`. Enabling it does not add a manifest
+permission or show Dia's remote-debugging approval popover.
+
+The bridge also supports bounded Resource Timing inspection and best-effort DOM
+automation without CDP:
+
+```bash
+bin/dia-browser net <tab-id>
+bin/dia-browser clickxy <tab-id> 120 240
+bin/dia-browser loadall <tab-id> '.load-more' 1000
+```
+
+`net` does not include response bodies or full CDP network events. `clickxy`
+dispatches an element click rather than a trusted operating-system mouse event.
+`loadall` stops after the selector disappears, 200 clicks, or five minutes.
 
 The router never silently falls back to CDP. CDP-only commands stop with an
 explanation unless the invocation explicitly includes `--allow-cdp`:
 
 ```bash
-bin/dia-browser --allow-cdp net <cdp-target>
-bin/dia-browser --allow-cdp eval <cdp-target> 'document.title'
+bin/dia-browser --allow-cdp --cdp evalraw <cdp-target> DOM.getDocument
 bin/dia-browser cdp-status
 bin/dia-browser cdp-stop <cdp-target>
 ```
@@ -275,7 +303,8 @@ extension-first `dia-browser` path for the user's existing Dia session.
 
 ## Optional High-Privilege Capabilities
 
-Version 0.5.0 adds window focus without adding a manifest permission. Cookie,
+Window focus, Resource Timing, capability-gated evaluation, coordinate clicks,
+and bounded repeated clicks do not add a manifest permission. Cookie,
 download, clipboard, request observation or modification, file URL, and
 incognito capabilities remain unsupported by default. Add one only when there
 is a concrete use case and its permission warning is acceptable.

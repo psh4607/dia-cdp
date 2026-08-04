@@ -18,7 +18,7 @@ describe('Dia extension package', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'extension/manifest.json'), 'utf8'));
 
     assert.equal(manifest.manifest_version, 3);
-    assert.equal(manifest.version, '0.6.0');
+    assert.equal(manifest.version, '0.7.0');
     assert.equal(extensionIdFromKey(manifest.key), 'jkijmmbnkcgjmpagmpflooolealenfkf');
     assert.equal(manifest.background.type, 'module');
     assert.deepEqual(manifest.permissions, ['tabs', 'scripting', 'alarms']);
@@ -48,6 +48,8 @@ describe('Dia extension package', () => {
 
     assert.match(host, /const MAX_BODY_BYTES = 16_777_216/);
     assert.match(host, /const REQUEST_TIMEOUT_MS = 45_000/);
+    assert.match(host, /const LONG_REQUEST_TIMEOUT_MS = 310_000/);
+    assert.match(host, /request\.command === 'page\.loadall'/);
     assert.doesNotMatch(host, /url\.pathname === '\/(poll|response)'/);
     assert.match(host, /expectedExtensionVersion/);
     assert.match(host, /type === 'hello'/);
@@ -84,6 +86,7 @@ describe('Dia extension package', () => {
     }
     assert.match(installer, /copyFileSync\(resolve\(currentDir, 'extension-host\.mjs'/);
     assert.match(installer, /copyFileSync\(resolve\(currentDir, 'bridge-config\.mjs'/);
+    assert.match(installer, /copyFileSync\(resolve\(currentDir, 'bridge-capabilities\.mjs'/);
     assert.match(installer, /ensureBridgeToken\(tokenPath\)/);
   });
 
