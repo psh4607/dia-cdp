@@ -34,6 +34,7 @@ Dia's recurring `Allow debugging` dialog. It requests:
 - `tabs`, to read tab titles and URLs
 - `scripting` and `<all_urls>`, to inspect and interact with ordinary web pages
 - `http://127.0.0.1/*`, to communicate with the user-only loopback relay
+- `alarms`, to reconnect after Dia wakes an inactive extension worker
 
 Dia presents the broad site-access permission once when the unpacked extension
 is installed or upgraded. The bridge does not request the more powerful
@@ -112,6 +113,8 @@ network response bodies, performance traces, and unrestricted CDP domains.
 
 The CLI starts a relay bound only to `127.0.0.1:47137` and communicates with it
 through a user-only Unix socket at `~/.cache/dia-cdp/extension-bridge.sock`.
+The extension keeps an authenticated loopback WebSocket open and sends a
+heartbeat every 20 seconds; a 30-second alarm provides cold reconnect recovery.
 The relay requires both the private token and the extension's exact origin. A
 public manifest key keeps that extension id unchanged when the plugin
 installation path or version changes; no private signing key ships with the
@@ -183,7 +186,7 @@ dia-cdp --restart --force-kill list
 
 `src/cdp.mjs` holds the raw CDP client and per-tab daemon. `extension/` contains
 the Manifest V3 extension, while `src/extension-host.mjs` and
-`src/extension-client.mjs` implement the loopback HTTP and Unix-socket bridge.
+`src/extension-client.mjs` implement the loopback WebSocket and Unix-socket bridge.
 Runtime sockets and page cache live under `~/.cache/dia-cdp` or
 `$XDG_RUNTIME_DIR/dia-cdp`, so this project does not share daemon state with the
 original `chrome-cdp` script.

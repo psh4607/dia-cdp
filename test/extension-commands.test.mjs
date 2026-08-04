@@ -27,7 +27,7 @@ function createChromeMock() {
     failNextCapture() { captureFailuresRemaining += 1; },
     setTabActive(active) { tabs[0].active = active; },
     runtime: {
-      getManifest: () => ({ version: '0.3.0' }),
+      getManifest: () => ({ version: '0.3.1' }),
     },
     scripting: {
       executeScript: async (details) => {
@@ -66,7 +66,7 @@ describe('Dia extension commands', () => {
 
     assert.deepEqual(result, {
       extension: 'Dia Codex Bridge',
-      version: '0.3.0',
+      version: '0.3.1',
     });
   });
 

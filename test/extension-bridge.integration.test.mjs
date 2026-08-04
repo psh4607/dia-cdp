@@ -2,6 +2,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -41,8 +42,35 @@ async function getAvailablePort() {
   return port;
 }
 
+function requestWebSocketUpgrade({ port, token, origin }) {
+  return new Promise((resolveStatus, reject) => {
+    const request = http.request({
+      host: '127.0.0.1',
+      port,
+      path: `/bridge${token ? `?token=${encodeURIComponent(token)}` : ''}`,
+      headers: {
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+        'Sec-WebSocket-Version': '13',
+        ...(origin ? { Origin: origin } : {}),
+      },
+    });
+    request.on('upgrade', (_response, socket) => {
+      socket.destroy();
+      resolveStatus(101);
+    });
+    request.on('response', (response) => {
+      response.resume();
+      resolveStatus(response.statusCode);
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
+
 describe('Dia extension bridge', () => {
-  it('relays a CLI request through the loopback HTTP endpoint and back', async () => {
+  it('relays a CLI request through the loopback WebSocket and back', async () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-bridge-'));
     temporaryDirectories.push(directory);
     const socketPath = resolve(directory, 'bridge.sock');
@@ -63,27 +91,27 @@ describe('Dia extension bridge', () => {
 
     await waitForPath(socketPath);
 
-    const simulatedExtension = (async () => {
-      const poll = await fetch(`http://127.0.0.1:${relayPort}/poll?token=${token}`, {
-        headers: { 'X-Dia-Extension-Id': extensionId },
-      });
-      assert.equal(poll.status, 200);
-      const request = await poll.json();
-      assert.equal(request.command, 'tabs.list');
-      const response = await fetch(`http://127.0.0.1:${relayPort}/response?token=${token}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain',
-          'X-Dia-Extension-Id': extensionId,
-        },
-        body: JSON.stringify({
-          id: request.id,
-          ok: true,
-          result: [{ id: 7, title: 'Dia', url: 'https://example.com/' }],
-        }),
-      });
-      assert.equal(response.status, 204);
-    })();
+    const socket = new WebSocket(`ws://127.0.0.1:${relayPort}/bridge?token=${token}`);
+    await new Promise((resolveOpen, reject) => {
+      socket.addEventListener('open', resolveOpen, { once: true });
+      socket.addEventListener('error', reject, { once: true });
+    });
+    const simulatedExtension = new Promise((resolveResponse, reject) => {
+      socket.addEventListener('message', (event) => {
+        try {
+          const request = JSON.parse(event.data);
+          assert.equal(request.command, 'tabs.list');
+          socket.send(JSON.stringify({
+            id: request.id,
+            ok: true,
+            result: [{ id: 7, title: 'Dia', url: 'https://example.com/' }],
+          }));
+          resolveResponse();
+        } catch (error) {
+          reject(error);
+        }
+      }, { once: true });
+    });
 
     const result = await sendBridgeRequest('tabs.list', {}, {
       autoStart: false,
@@ -91,11 +119,12 @@ describe('Dia extension bridge', () => {
       timeoutMs: 2_000,
     });
     await simulatedExtension;
+    socket.close();
 
     assert.deepEqual(result, [{ id: 7, title: 'Dia', url: 'https://example.com/' }]);
   });
 
-  it('rejects loopback requests without the extension identity', async () => {
+  it('rejects WebSocket upgrades without the bridge token', async () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-origin-'));
     temporaryDirectories.push(directory);
     const socketPath = resolve(directory, 'bridge.sock');
@@ -112,20 +141,17 @@ describe('Dia extension bridge', () => {
     childProcesses.push(child);
     await waitForPath(socketPath);
 
-    const response = await fetch(`http://127.0.0.1:${relayPort}/poll?token=test-bridge-token`);
-    assert.equal(response.status, 403);
+    assert.equal(await requestWebSocketUpgrade({ port: relayPort }), 403);
   });
 
-  it('rejects a web origin even if it copies the extension identity header', async () => {
+  it('rejects a web origin even if it knows the bridge token', async () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-web-origin-'));
     temporaryDirectories.push(directory);
     const socketPath = resolve(directory, 'bridge.sock');
     const relayPort = await getAvailablePort();
-    const extensionId = 'jkijmmbnkcgjmpagmpflooolealenfkf';
     const child = spawn(process.execPath, [resolve(root, 'src/extension-host.mjs')], {
       env: {
         ...process.env,
-        DIA_EXTENSION_ID: extensionId,
         DIA_EXTENSION_RELAY_PORT: String(relayPort),
         DIA_EXTENSION_SOCKET: socketPath,
         DIA_EXTENSION_TOKEN: 'test-bridge-token',
@@ -135,12 +161,10 @@ describe('Dia extension bridge', () => {
     childProcesses.push(child);
     await waitForPath(socketPath);
 
-    const response = await fetch(`http://127.0.0.1:${relayPort}/poll?token=test-bridge-token`, {
-      headers: {
-        Origin: 'https://example.com',
-        'X-Dia-Extension-Id': extensionId,
-      },
-    });
-    assert.equal(response.status, 403);
+    assert.equal(await requestWebSocketUpgrade({
+      port: relayPort,
+      token: 'test-bridge-token',
+      origin: 'https://example.com',
+    }), 403);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "dia-cdp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Dia browser extension bridge, CDP tools, and Codex skill for inspecting the user's Dia session.",
   "author": {
     "name": "Seongho",

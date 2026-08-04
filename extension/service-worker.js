@@ -3,11 +3,13 @@ import { handleBridgeRequest } from './commands.js';
 
 const MIN_RECONNECT_DELAY_MS = 2_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
-const POLL_URL = `${RELAY_ORIGIN}/poll?token=${encodeURIComponent(BRIDGE_TOKEN)}`;
-const RESPONSE_URL = `${RELAY_ORIGIN}/response?token=${encodeURIComponent(BRIDGE_TOKEN)}`;
-const RELAY_HEADERS = { 'X-Dia-Extension-Id': chrome.runtime.id };
+const HEARTBEAT_INTERVAL_MS = 20_000;
+const RECONNECT_ALARM = 'dia-extension-reconnect';
+const BRIDGE_URL = `${RELAY_ORIGIN.replace('http://', 'ws://')}/bridge?token=${encodeURIComponent(BRIDGE_TOKEN)}`;
 
-let polling = false;
+let bridgeSocket;
+let heartbeatTimer;
+let reconnectTimer;
 let reconnectDelayMs = MIN_RECONNECT_DELAY_MS;
 
 function setBridgeBadge(text, color) {
@@ -15,64 +17,83 @@ function setBridgeBadge(text, color) {
   chrome.action.setBadgeBackgroundColor({ color });
 }
 
-function delay(milliseconds) {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+function clearBridgeTimers() {
+  clearInterval(heartbeatTimer);
+  clearTimeout(reconnectTimer);
+  heartbeatTimer = undefined;
+  reconnectTimer = undefined;
 }
 
-async function sendResponse(response) {
-  const result = await fetch(RESPONSE_URL, {
-    method: 'POST',
-    headers: {
-      ...RELAY_HEADERS,
-      'Content-Type': 'text/plain;charset=UTF-8',
-    },
-    body: JSON.stringify(response),
-    cache: 'no-store',
-  });
-  if (!result.ok) throw new Error(`relay response failed with HTTP ${result.status}`);
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined;
+    connectBridge();
+  }, reconnectDelayMs);
+  reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
 }
 
-async function pollRelay() {
-  if (polling) return;
-  polling = true;
+function sendBridgeMessage(message) {
+  if (bridgeSocket?.readyState !== WebSocket.OPEN) return false;
+  bridgeSocket.send(JSON.stringify(message));
+  return true;
+}
 
-  while (polling) {
-    try {
-      const response = await fetch(POLL_URL, {
-        headers: RELAY_HEADERS,
-        cache: 'no-store',
-      });
-      if (response.status === 204) continue;
-      if (!response.ok) throw new Error(`relay poll failed with HTTP ${response.status}`);
+async function handleRelayMessage(event) {
+  let request;
+  try {
+    request = JSON.parse(event.data);
+  } catch {
+    return;
+  }
+  if (!request || request.type === 'heartbeat') return;
 
-      reconnectDelayMs = MIN_RECONNECT_DELAY_MS;
-      setBridgeBadge('ON', '#188038');
-      const request = await response.json();
-      try {
-        const result = await handleBridgeRequest(chrome, request);
-        await sendResponse({ id: request.id, ok: true, result });
-      } catch (error) {
-        await sendResponse({
-          id: request.id,
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    } catch (error) {
-      setBridgeBadge('OFF', '#B3261E');
-      console.warn(
-        'Dia Codex Bridge could not reach the local relay.',
-        error instanceof Error ? error.message : String(error),
-      );
-      await delay(reconnectDelayMs);
-      reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
-    }
+  try {
+    const result = await handleBridgeRequest(chrome, request);
+    sendBridgeMessage({ id: request.id, ok: true, result });
+  } catch (error) {
+    sendBridgeMessage({
+      id: request.id,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
-chrome.runtime.onInstalled.addListener(pollRelay);
-chrome.runtime.onStartup.addListener(pollRelay);
-chrome.action.onClicked.addListener(pollRelay);
+function connectBridge() {
+  if ([WebSocket.CONNECTING, WebSocket.OPEN].includes(bridgeSocket?.readyState)) return;
+
+  clearBridgeTimers();
+  bridgeSocket = new WebSocket(BRIDGE_URL);
+  bridgeSocket.addEventListener('open', () => {
+    reconnectDelayMs = MIN_RECONNECT_DELAY_MS;
+    setBridgeBadge('ON', '#188038');
+    heartbeatTimer = setInterval(() => {
+      sendBridgeMessage({ type: 'heartbeat', timestamp: Date.now() });
+    }, HEARTBEAT_INTERVAL_MS);
+  });
+  bridgeSocket.addEventListener('message', handleRelayMessage);
+  bridgeSocket.addEventListener('close', () => {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = undefined;
+    bridgeSocket = undefined;
+    setBridgeBadge('OFF', '#B3261E');
+    scheduleReconnect();
+  });
+  bridgeSocket.addEventListener('error', () => bridgeSocket?.close());
+}
+
+function initializeBridge() {
+  chrome.alarms.create(RECONNECT_ALARM, { periodInMinutes: 0.5 });
+  connectBridge();
+}
+
+chrome.runtime.onInstalled.addListener(initializeBridge);
+chrome.runtime.onStartup.addListener(initializeBridge);
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === RECONNECT_ALARM) connectBridge();
+});
+chrome.action.onClicked.addListener(connectBridge);
 
 setBridgeBadge('…', '#5F6368');
-pollRelay();
+initializeBridge();

@@ -18,29 +18,34 @@ describe('Dia extension package', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'extension/manifest.json'), 'utf8'));
 
     assert.equal(manifest.manifest_version, 3);
-    assert.equal(manifest.version, '0.3.0');
+    assert.equal(manifest.version, '0.3.1');
     assert.equal(extensionIdFromKey(manifest.key), 'jkijmmbnkcgjmpagmpflooolealenfkf');
     assert.equal(manifest.background.type, 'module');
-    assert.deepEqual(manifest.permissions, ['tabs', 'scripting']);
+    assert.deepEqual(manifest.permissions, ['tabs', 'scripting', 'alarms']);
     assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*', '<all_urls>']);
     assert.equal(manifest.permissions.includes('debugger'), false);
     assert.equal(manifest.permissions.includes('nativeMessaging'), false);
   });
 
-  it('connects only to the local loopback relay', () => {
+  it('keeps the service worker alive through a local WebSocket heartbeat', () => {
     const worker = readFileSync(resolve(root, 'extension/service-worker.js'), 'utf8');
 
     assert.match(worker, /import \{ BRIDGE_TOKEN, RELAY_ORIGIN \}/);
-    assert.match(worker, /fetch\(POLL_URL/);
-    assert.match(worker, /fetch\(RESPONSE_URL/);
+    assert.match(worker, /new WebSocket\(BRIDGE_URL\)/);
+    assert.match(worker, /type: 'heartbeat'/);
+    assert.match(worker, /chrome\.alarms\.create/);
+    assert.match(worker, /chrome\.alarms\.onAlarm\.addListener/);
     assert.match(worker, /handleBridgeRequest\(chrome, request\)/);
     assert.match(worker, /setBridgeBadge\('ON'/);
+    assert.doesNotMatch(worker, /fetch\(POLL_URL/);
   });
 
   it('accepts bounded multi-megabyte screenshot responses', () => {
     const host = readFileSync(resolve(root, 'src/extension-host.mjs'), 'utf8');
 
     assert.match(host, /const MAX_BODY_BYTES = 16_777_216/);
+    assert.match(host, /const REQUEST_TIMEOUT_MS = 45_000/);
+    assert.doesNotMatch(host, /url\.pathname === '\/(poll|response)'/);
   });
 
   it('ships executable bridge entrypoints', () => {

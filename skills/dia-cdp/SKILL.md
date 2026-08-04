@@ -88,6 +88,8 @@ scripts/dia-cdp --restart --force-kill list
   web pages. It does not request `debugger` or `nativeMessaging`.
 - The bridge exposes fixed operations and deliberately does not accept arbitrary
   JavaScript evaluation.
+- The extension keeps its local WebSocket alive with a 20-second heartbeat and
+  uses a 30-second alarm to reconnect after worker suspension or relay startup.
 - A missing extension bridge is not a CDP failure. Use `dia-extension ping` to
   distinguish bridge installation from Dia remote-debugging state.
 - Runtime state lives under `~/.cache/dia-cdp`, separate from `chrome-cdp`.

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import http from 'node:http';
 import { homedir } from 'node:os';
@@ -11,8 +12,7 @@ import {
   ensureBridgeToken,
 } from './bridge-config.mjs';
 
-const REQUEST_TIMEOUT_MS = 15_000;
-const POLL_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_BODY_BYTES = 16_777_216;
 const socketPath = process.env.DIA_EXTENSION_SOCKET
   || resolve(homedir(), '.cache', 'dia-cdp', 'extension-bridge.sock');
@@ -27,7 +27,8 @@ if (existsSync(socketPath)) unlinkSync(socketPath);
 let nextRequestId = 1;
 const pending = new Map();
 const queuedRequests = [];
-const waitingPolls = [];
+let bridgeSocket;
+let bridgeSocketBuffer = Buffer.alloc(0);
 
 function writeSocketResponse(connection, response) {
   connection.end(`${JSON.stringify(response)}\n`);
@@ -42,32 +43,98 @@ function rejectPending(message) {
   queuedRequests.length = 0;
 }
 
-function applyCors(response) {
-  response.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Dia-Extension-Id');
-  response.setHeader('Cache-Control', 'no-store');
-  response.setHeader('Vary', 'Origin');
-}
-
-function sendJson(response, status, value) {
-  applyCors(response);
-  response.writeHead(status, { 'Content-Type': 'application/json' });
-  response.end(JSON.stringify(value));
-}
-
-function sendEmpty(response, status = 204) {
-  applyCors(response);
-  response.writeHead(status);
-  response.end();
-}
-
 function dispatchQueuedRequest() {
-  while (queuedRequests.length && waitingPolls.length) {
-    const request = queuedRequests.shift();
-    const { response, timer } = waitingPolls.shift();
-    clearTimeout(timer);
-    sendJson(response, 200, request);
+  if (bridgeSocket?.writable) {
+    while (queuedRequests.length) {
+      bridgeSocket.write(encodeWebSocketFrame(JSON.stringify(queuedRequests.shift())));
+    }
+  }
+}
+
+function encodeWebSocketFrame(value, opcode = 0x1) {
+  const payload = Buffer.from(value);
+  let header;
+  if (payload.length < 126) {
+    header = Buffer.from([0x80 | opcode, payload.length]);
+  } else if (payload.length <= 0xffff) {
+    header = Buffer.alloc(4);
+    header[0] = 0x80 | opcode;
+    header[1] = 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x80 | opcode;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  }
+  return Buffer.concat([header, payload]);
+}
+
+function handleBridgeResponse(bridgeResponse) {
+  if (bridgeResponse?.type === 'heartbeat') return;
+  const entry = pending.get(bridgeResponse?.id);
+  if (!entry) return;
+  pending.delete(bridgeResponse.id);
+  clearTimeout(entry.timer);
+  writeSocketResponse(entry.connection, {
+    ...bridgeResponse,
+    id: entry.requestId,
+  });
+}
+
+function consumeWebSocketFrames(chunk) {
+  bridgeSocketBuffer = Buffer.concat([bridgeSocketBuffer, chunk]);
+  while (bridgeSocketBuffer.length >= 2) {
+    const firstByte = bridgeSocketBuffer[0];
+    const secondByte = bridgeSocketBuffer[1];
+    const opcode = firstByte & 0x0f;
+    const masked = Boolean(secondByte & 0x80);
+    let payloadLength = secondByte & 0x7f;
+    let offset = 2;
+
+    if (payloadLength === 126) {
+      if (bridgeSocketBuffer.length < 4) return;
+      payloadLength = bridgeSocketBuffer.readUInt16BE(2);
+      offset = 4;
+    } else if (payloadLength === 127) {
+      if (bridgeSocketBuffer.length < 10) return;
+      payloadLength = Number(bridgeSocketBuffer.readBigUInt64BE(2));
+      offset = 10;
+    }
+    if (payloadLength > MAX_BODY_BYTES) {
+      bridgeSocket?.destroy(new Error('WebSocket message is too large'));
+      return;
+    }
+
+    const maskLength = masked ? 4 : 0;
+    const frameLength = offset + maskLength + payloadLength;
+    if (bridgeSocketBuffer.length < frameLength) return;
+    const mask = masked ? bridgeSocketBuffer.subarray(offset, offset + 4) : null;
+    const payloadStart = offset + maskLength;
+    const payload = Buffer.from(
+      bridgeSocketBuffer.subarray(payloadStart, payloadStart + payloadLength),
+    );
+    bridgeSocketBuffer = bridgeSocketBuffer.subarray(frameLength);
+    if (mask) {
+      for (let index = 0; index < payload.length; index += 1) {
+        payload[index] ^= mask[index % 4];
+      }
+    }
+
+    if (opcode === 0x8) {
+      bridgeSocket?.end(encodeWebSocketFrame('', 0x8));
+      return;
+    }
+    if (opcode === 0x9) {
+      bridgeSocket?.write(encodeWebSocketFrame(payload, 0xa));
+      continue;
+    }
+    if (opcode !== 0x1) continue;
+    try {
+      handleBridgeResponse(JSON.parse(payload.toString('utf8')));
+    } catch {
+      // Ignore malformed extension frames and keep the authenticated channel alive.
+    }
   }
 }
 
@@ -104,86 +171,48 @@ function queueBridgeRequest(connection, request) {
   dispatchQueuedRequest();
 }
 
-function readRequestBody(request) {
-  return new Promise((resolveBody, reject) => {
-    let body = '';
-    request.setEncoding('utf8');
-    request.on('data', (chunk) => {
-      body += chunk;
-      if (Buffer.byteLength(body) > MAX_BODY_BYTES) {
-        reject(new Error('response body is too large'));
-        request.destroy();
-      }
-    });
-    request.on('end', () => resolveBody(body));
-    request.on('error', reject);
-  });
-}
+const httpServer = http.createServer((_request, response) => {
+  response.writeHead(404, { 'Cache-Control': 'no-store' });
+  response.end();
+});
 
-function isAuthorized(request, url) {
-  const origin = request.headers.origin;
-  return (origin === undefined || origin === allowedOrigin)
-    && request.headers['x-dia-extension-id'] === (process.env.DIA_EXTENSION_ID || DEFAULT_EXTENSION_ID)
-    && url.searchParams.get('token') === bridgeToken;
-}
-
-const httpServer = http.createServer(async (request, response) => {
+httpServer.on('upgrade', (request, socket) => {
   const url = new URL(request.url || '/', `http://127.0.0.1:${relayPort}`);
-
-  if (request.method === 'OPTIONS') {
-    if (request.headers.origin !== undefined && request.headers.origin !== allowedOrigin) {
-      sendEmpty(response, 403);
-      return;
-    }
-    sendEmpty(response);
+  const origin = request.headers.origin;
+  const authorizedOrigin = origin === undefined || origin === allowedOrigin;
+  const authorized = url.pathname === '/bridge'
+    && authorizedOrigin
+    && url.searchParams.get('token') === bridgeToken;
+  const webSocketKey = request.headers['sec-websocket-key'];
+  if (!authorized || typeof webSocketKey !== 'string') {
+    socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     return;
   }
 
-  if (!isAuthorized(request, url)) {
-    sendEmpty(response, 403);
-    return;
-  }
+  const accept = createHash('sha1')
+    .update(`${webSocketKey}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+    .digest('base64');
+  socket.write([
+    'HTTP/1.1 101 Switching Protocols',
+    'Upgrade: websocket',
+    'Connection: Upgrade',
+    `Sec-WebSocket-Accept: ${accept}`,
+    '',
+    '',
+  ].join('\r\n'));
 
-  if (request.method === 'GET' && url.pathname === '/poll') {
-    const timer = setTimeout(() => {
-      const index = waitingPolls.findIndex((entry) => entry.response === response);
-      if (index >= 0) waitingPolls.splice(index, 1);
-      sendEmpty(response);
-    }, POLL_TIMEOUT_MS);
-    waitingPolls.push({ response, timer });
-    response.on('close', () => {
-      const index = waitingPolls.findIndex((entry) => entry.response === response);
-      if (index >= 0) {
-        clearTimeout(waitingPolls[index].timer);
-        waitingPolls.splice(index, 1);
-      }
-    });
-    dispatchQueuedRequest();
-    return;
-  }
-
-  if (request.method === 'POST' && url.pathname === '/response') {
-    try {
-      const bridgeResponse = JSON.parse(await readRequestBody(request));
-      const entry = pending.get(bridgeResponse.id);
-      if (entry) {
-        pending.delete(bridgeResponse.id);
-        clearTimeout(entry.timer);
-        writeSocketResponse(entry.connection, {
-          ...bridgeResponse,
-          id: entry.requestId,
-        });
-      }
-      sendEmpty(response);
-    } catch (error) {
-      sendJson(response, 400, {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return;
-  }
-
-  sendEmpty(response, 404);
+  if (bridgeSocket && bridgeSocket !== socket) bridgeSocket.destroy();
+  bridgeSocket = socket;
+  bridgeSocketBuffer = Buffer.alloc(0);
+  socket.on('data', consumeWebSocketFrames);
+  socket.on('close', () => {
+    if (bridgeSocket !== socket) return;
+    bridgeSocket = undefined;
+    bridgeSocketBuffer = Buffer.alloc(0);
+    rejectPending('Dia extension relay disconnected');
+  });
+  socket.on('error', () => {});
+  dispatchQueuedRequest();
 });
 
 const socketServer = net.createServer((connection) => {
@@ -221,12 +250,9 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   rejectPending('Dia extension relay disconnected');
-  for (const { response, timer } of waitingPolls.splice(0)) {
-    clearTimeout(timer);
-    sendEmpty(response, 503);
-  }
   socketServer.close();
   httpServer.close();
+  bridgeSocket?.destroy();
   if (existsSync(socketPath)) unlinkSync(socketPath);
 }
 

@@ -8,7 +8,7 @@ import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 45_000;
 const START_TIMEOUT_MS = 3_000;
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const socketPath = process.env.DIA_EXTENSION_SOCKET
