@@ -85,6 +85,31 @@ the current macOS user.
 
 ### Use the bridge
 
+Use the unified extension-first router for normal work:
+
+```bash
+bin/dia-browser health
+bin/dia-browser list
+bin/dia-browser snapshot <tab-id>
+bin/dia-browser click <tab-id> '#save'
+bin/dia-browser shot <tab-id> /tmp/dia.png
+```
+
+The router never silently falls back to CDP. CDP-only commands stop with an
+explanation unless the invocation explicitly includes `--allow-cdp`:
+
+```bash
+bin/dia-browser --allow-cdp net <cdp-target>
+bin/dia-browser --allow-cdp eval <cdp-target> 'document.title'
+bin/dia-browser cdp-status
+bin/dia-browser cdp-stop <cdp-target>
+```
+
+An approved per-tab CDP daemon is reused for eight hours by default. Set
+`DIA_CDP_IDLE_TIMEOUT_MS` to choose a different positive idle duration.
+
+The lower-level extension command remains available:
+
 ```bash
 bin/dia-extension ping
 bin/dia-extension list
@@ -115,6 +140,10 @@ The CLI starts a relay bound only to `127.0.0.1:47137` and communicates with it
 through a user-only Unix socket at `~/.cache/dia-cdp/extension-bridge.sock`.
 The extension keeps an authenticated loopback WebSocket open and sends a
 heartbeat every 20 seconds; a 30-second alarm provides cold reconnect recovery.
+The installer also registers a user LaunchAgent that starts the relay at login
+and restarts it after a crash. On the first command after a plugin update, the
+CLI synchronizes the stable payload automatically; the old extension worker
+then reloads itself when the permission set has not changed.
 The relay requires both the private token and the extension's exact origin. A
 public manifest key keeps that extension id unchanged when the plugin
 installation path or version changes; no private signing key ships with the

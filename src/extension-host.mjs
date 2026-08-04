@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import http from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import net from 'node:net';
+import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_EXTENSION_ID,
   DEFAULT_RELAY_PORT,
@@ -19,10 +20,17 @@ const socketPath = process.env.DIA_EXTENSION_SOCKET
 const relayPort = Number(process.env.DIA_EXTENSION_RELAY_PORT || DEFAULT_RELAY_PORT);
 const bridgeToken = ensureBridgeToken();
 const allowedOrigin = `chrome-extension://${process.env.DIA_EXTENSION_ID || DEFAULT_EXTENSION_ID}`;
+const currentDir = dirname(fileURLToPath(import.meta.url));
+let expectedExtensionVersion;
+try {
+  const manifestPath = resolve(currentDir, '..', 'extension', 'manifest.json');
+  expectedExtensionVersion = JSON.parse(readFileSync(manifestPath, 'utf8')).version;
+} catch {
+  expectedExtensionVersion = undefined;
+}
 
 process.umask(0o077);
 mkdirSync(dirname(socketPath), { recursive: true, mode: 0o700 });
-if (existsSync(socketPath)) unlinkSync(socketPath);
 
 let nextRequestId = 1;
 const pending = new Map();
@@ -72,6 +80,12 @@ function encodeWebSocketFrame(value, opcode = 0x1) {
 
 function handleBridgeResponse(bridgeResponse) {
   if (bridgeResponse?.type === 'heartbeat') return;
+  if (bridgeResponse?.type === 'hello') {
+    if (expectedExtensionVersion && bridgeResponse.version !== expectedExtensionVersion) {
+      bridgeSocket?.write(encodeWebSocketFrame(JSON.stringify({ type: 'reload' })));
+    }
+    return;
+  }
   const entry = pending.get(bridgeResponse?.id);
   if (!entry) return;
   pending.delete(bridgeResponse.id);
@@ -144,6 +158,21 @@ function queueBridgeRequest(connection, request) {
       id: request?.id,
       ok: false,
       error: 'request.command must be a string',
+    });
+    return;
+  }
+
+  if (request.command === 'relay.health') {
+    writeSocketResponse(connection, {
+      id: request.id,
+      ok: true,
+      result: {
+        relay: 'running',
+        extensionConnected: Boolean(bridgeSocket?.writable),
+        pendingRequests: pending.size,
+        queuedRequests: queuedRequests.length,
+        uptimeSeconds: Math.floor(process.uptime()),
+      },
     });
     return;
   }
@@ -236,14 +265,16 @@ const socketServer = net.createServer((connection) => {
 
 function fail(error) {
   process.stderr.write(`Dia extension relay failed: ${error.message}\n`);
-  process.exitCode = 1;
+  process.exit(1);
 }
 
 httpServer.on('error', fail);
 socketServer.on('error', fail);
 
-httpServer.listen(relayPort, '127.0.0.1');
-socketServer.listen(socketPath, () => chmodSync(socketPath, 0o600));
+httpServer.listen(relayPort, '127.0.0.1', () => {
+  if (existsSync(socketPath)) unlinkSync(socketPath);
+  socketServer.listen(socketPath, () => chmodSync(socketPath, 0o600));
+});
 
 let shuttingDown = false;
 function shutdown() {

@@ -1,11 +1,58 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import * as client from '../src/extension-client.mjs';
 
 describe('dia-extension CLI', () => {
+  it('detects when the stable extension payload needs a plugin update sync', () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-sync-'));
+    const bundled = resolve(directory, 'bundled.json');
+    const installed = resolve(directory, 'installed.json');
+    try {
+      writeFileSync(bundled, JSON.stringify({ version: '0.4.0' }));
+      writeFileSync(installed, JSON.stringify({ version: '0.3.1' }));
+      assert.equal(typeof client.payloadSyncRequired, 'function');
+      assert.equal(client.payloadSyncRequired(bundled, installed), true);
+      writeFileSync(installed, JSON.stringify({ version: '0.4.0' }));
+      assert.equal(client.payloadSyncRequired(bundled, installed), false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('classifies extension-first routes without silently falling back to CDP', () => {
+    assert.equal(typeof client.classifyRoute, 'function');
+    assert.deepEqual(client.classifyRoute(['snapshot', '10']), {
+      route: 'extension',
+      bridgeCommand: 'page.snapshot',
+      bridgeArgs: { tabId: 10 },
+    });
+    assert.deepEqual(client.classifyRoute(['net', 'ABCDEF12']), {
+      route: 'cdp',
+      cdpArgs: ['net', 'ABCDEF12'],
+      requiresConsent: true,
+    });
+    assert.deepEqual(client.classifyRoute(['cdp-status']), {
+      route: 'cdp',
+      cdpArgs: ['status'],
+      requiresConsent: false,
+    });
+    assert.throws(
+      () => client.classifyRoute(['--cdp', 'click', 'ABCDEF12', '#save']),
+      /--allow-cdp/,
+    );
+    assert.deepEqual(
+      client.classifyRoute(['--allow-cdp', '--cdp', 'click', 'ABCDEF12', '#save']),
+      {
+        route: 'cdp',
+        cdpArgs: ['click', 'ABCDEF12', '#save'],
+        requiresConsent: true,
+      },
+    );
+  });
+
   it('maps extension-first CLI commands to allowlisted bridge requests', () => {
     assert.equal(typeof client.parseCliArgs, 'function');
     assert.deepEqual(client.parseCliArgs(['snapshot', '10']), {

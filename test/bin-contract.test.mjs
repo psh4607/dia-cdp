@@ -6,6 +6,12 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 
 describe('dia-cdp wrapper contract', () => {
+  it('ships a unified extension-first browser router', () => {
+    const wrapper = readFileSync(resolve(root, 'bin/dia-browser'), 'utf8');
+
+    assert.match(wrapper, /src\/extension-client\.mjs/);
+  });
+
   it('execs the project-local CDP engine with Dia DevToolsActivePort', () => {
     const wrapper = readFileSync(resolve(root, 'bin/dia-cdp'), 'utf8');
 

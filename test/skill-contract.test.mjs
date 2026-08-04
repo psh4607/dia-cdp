@@ -17,6 +17,8 @@ describe('dia-cdp bundled skill', () => {
     assert.match(skill, /scripts\/dia-extension click/);
     assert.match(skill, /scripts\/dia-extension type/);
     assert.match(skill, /scripts\/dia-extension shot/);
+    assert.match(skill, /scripts\/dia-browser/);
+    assert.match(skill, /--allow-cdp/);
     assert.match(skill, /CDP fallback/);
     assert.match(skill, /Do not call.*chrome-cdp/);
     assert.doesNotMatch(skill, /projects\/seongho\/projects\/dia-cdp\/src\/cdp\.mjs/);
@@ -30,6 +32,15 @@ describe('dia-cdp bundled skill', () => {
     assert.match(script, /PLUGIN_ROOT="\$\(cd "\$SCRIPT_DIR\/\.\.\/\.\.\/\.\." && pwd\)"/);
     assert.match(script, /exec "\$PLUGIN_ROOT\/bin\/dia-cdp" "\$@"/);
     assert.ok(stat.mode & 0o111, 'skill wrapper must be executable');
+  });
+
+  it('ships a skill-local extension-first router wrapper', () => {
+    const scriptPath = resolve(root, 'skills/dia-cdp/scripts/dia-browser');
+    const script = readFileSync(scriptPath, 'utf8');
+    const stat = statSync(scriptPath);
+
+    assert.match(script, /exec "\$PLUGIN_ROOT\/bin\/dia-browser" "\$@"/);
+    assert.ok(stat.mode & 0o111, 'router wrapper must be executable');
   });
 
   it('ships a skill-local extension bridge wrapper', () => {

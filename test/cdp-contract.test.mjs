@@ -22,6 +22,11 @@ describe('forked CDP engine contract', () => {
     assert.match(source, /Per-tab persistent daemon/);
     assert.match(source, /getOrStartTabDaemon/);
     assert.match(source, /Target\.getTargets/);
+    assert.match(source, /DIA_CDP_IDLE_TIMEOUT_MS/);
+    assert.match(source, /8 \* 60 \* 60 \* 1000/);
+    assert.match(source, /case 'status'/);
+    assert.match(source, /startedAt/);
+    assert.match(source, /lastActivityAt/);
   });
 
   it('uses a Dia-specific runtime directory', () => {

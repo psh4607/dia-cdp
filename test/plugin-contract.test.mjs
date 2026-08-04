@@ -14,7 +14,7 @@ describe('Codex plugin package', () => {
     const plugin = readJson('.codex-plugin/plugin.json');
 
     assert.equal(plugin.name, 'dia-cdp');
-    assert.equal(plugin.version, '0.3.1');
+    assert.equal(plugin.version, '0.4.0');
     assert.equal(plugin.repository, 'https://github.com/psh4607/dia-cdp');
     assert.equal(plugin.skills, './skills/');
     assert.equal(plugin.interface.displayName, 'Dia CDP');

@@ -46,6 +46,10 @@ async function handleRelayMessage(event) {
   } catch {
     return;
   }
+  if (request?.type === 'reload') {
+    chrome.runtime.reload();
+    return;
+  }
   if (!request || request.type === 'heartbeat') return;
 
   try {
@@ -68,6 +72,7 @@ function connectBridge() {
   bridgeSocket.addEventListener('open', () => {
     reconnectDelayMs = MIN_RECONNECT_DELAY_MS;
     setBridgeBadge('ON', '#188038');
+    sendBridgeMessage({ type: 'hello', version: chrome.runtime.getManifest().version });
     heartbeatTimer = setInterval(() => {
       sendBridgeMessage({ type: 'heartbeat', timestamp: Date.now() });
     }, HEARTBEAT_INTERVAL_MS);

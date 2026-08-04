@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import net from 'node:net';
@@ -11,6 +11,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const REQUEST_TIMEOUT_MS = 45_000;
 const START_TIMEOUT_MS = 3_000;
 const currentDir = dirname(fileURLToPath(import.meta.url));
+const cdpWrapperPath = resolve(currentDir, '..', 'bin', 'dia-cdp');
+const bundledManifestPath = resolve(currentDir, '..', 'extension', 'manifest.json');
+const stableManifestPath = resolve(
+  homedir(),
+  '.local',
+  'share',
+  'dia-cdp',
+  'extension',
+  'manifest.json',
+);
 const socketPath = process.env.DIA_EXTENSION_SOCKET
   || resolve(homedir(), '.cache', 'dia-cdp', 'extension-bridge.sock');
 
@@ -21,6 +31,23 @@ export function formatTabList(tabs) {
     const title = String(tab.title || '').slice(0, 54).padEnd(54);
     return `${marker} ${id}  ${title}  ${tab.url || ''}`;
   }).join('\n');
+}
+
+export function payloadSyncRequired(bundledPath = bundledManifestPath, installedPath = stableManifestPath) {
+  try {
+    const bundledVersion = JSON.parse(readFileSync(bundledPath, 'utf8')).version;
+    const installedVersion = JSON.parse(readFileSync(installedPath, 'utf8')).version;
+    return bundledVersion !== installedVersion;
+  } catch {
+    return true;
+  }
+}
+
+function syncInstalledPayload() {
+  if (!payloadSyncRequired()) return;
+  execFileSync(process.execPath, [resolve(currentDir, 'install-native-host.mjs')], {
+    stdio: 'inherit',
+  });
 }
 
 function relayScriptPath() {
@@ -93,6 +120,7 @@ export async function sendBridgeRequest(command, args = {}, options = {}) {
 const USAGE = `dia-extension <command> [args] [--json]
 
 Commands:
+  health                            Report relay and extension connection health
   ping                              Verify the Dia extension bridge
   list                              List Dia tabs without CDP remote-debugging
   get <tab-id>                      Get one Dia tab
@@ -113,6 +141,18 @@ Commands:
   select <tab-id> <selector> <value> Select a form option
   key <tab-id> <selector> <key>     Dispatch a key press
   shot <tab-id> <path>              Capture the visible tab as PNG
+
+CDP-only commands (require --allow-cdp and may show Dia approval):
+  net <target>                      Read network performance entries
+  eval <target> <expression>        Evaluate JavaScript through CDP
+  evalraw <target> <method> [json]  Send a raw CDP command
+  clickxy <target> <x> <y>          Click viewport coordinates through CDP
+  loadall <target> <selector> [ms]  Repeatedly click through CDP
+  --allow-cdp --cdp <command> ...   Force any command through CDP
+
+Session commands (never start a new CDP connection):
+  cdp-status [target]               Show reusable CDP daemon sessions
+  cdp-stop [target]                 Stop reusable CDP daemon sessions
 `;
 
 function numericTabId(value, command) {
@@ -140,6 +180,8 @@ export function parseCliArgs(args) {
   if (!command) throw new Error('command is required');
 
   switch (command) {
+    case 'health':
+      return { bridgeCommand: 'relay.health', bridgeArgs: {} };
     case 'ping':
       return { bridgeCommand: 'ping', bridgeArgs: {} };
     case 'list':
@@ -243,6 +285,49 @@ export function parseCliArgs(args) {
   }
 }
 
+const CDP_ONLY_COMMANDS = new Set(['net', 'eval', 'evalraw', 'clickxy', 'loadall']);
+
+export function classifyRoute(args) {
+  const allowCdp = args.includes('--allow-cdp');
+  const forceCdp = args.includes('--cdp');
+  const routedArgs = args.filter((arg) => arg !== '--allow-cdp' && arg !== '--cdp');
+  const command = routedArgs[0];
+
+  if (forceCdp) {
+    if (!allowCdp) {
+      throw new Error('forcing CDP requires --allow-cdp because Dia may show an approval prompt');
+    }
+    if (!command) throw new Error('a CDP command is required');
+    return { route: 'cdp', cdpArgs: routedArgs, requiresConsent: true };
+  }
+
+  if (command === 'cdp-status' || command === 'cdp-stop') {
+    return {
+      route: 'cdp',
+      cdpArgs: [command === 'cdp-status' ? 'status' : 'stop', ...routedArgs.slice(1)],
+      requiresConsent: false,
+    };
+  }
+
+  if (CDP_ONLY_COMMANDS.has(command)) {
+    return { route: 'cdp', cdpArgs: routedArgs, requiresConsent: true };
+  }
+
+  return { route: 'extension', ...parseCliArgs(routedArgs) };
+}
+
+function runCdp(cdpArgs) {
+  return new Promise((resolveRun, reject) => {
+    const child = spawn(cdpWrapperPath, cdpArgs, { stdio: 'inherit' });
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      if (signal) reject(new Error(`Dia CDP command stopped by ${signal}`));
+      else if (code === 0) resolveRun();
+      else reject(new Error(`Dia CDP command exited with status ${code}`));
+    });
+  });
+}
+
 export function writeScreenshot(dataUrl, outputPath) {
   const match = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
   if (!match) throw new Error('extension returned an invalid PNG screenshot');
@@ -260,7 +345,19 @@ async function main() {
     return;
   }
 
-  const { bridgeCommand, bridgeArgs, outputPath } = parseCliArgs(args);
+  syncInstalledPayload();
+  const route = classifyRoute(args);
+  if (route.route === 'cdp') {
+    if (route.requiresConsent && !args.includes('--allow-cdp')) {
+      throw new Error(
+        `"${route.cdpArgs[0]}" requires CDP and may show Dia's approval prompt. `
+        + `Re-run with: dia-browser --allow-cdp ${route.cdpArgs.join(' ')}`,
+      );
+    }
+    await runCdp(route.cdpArgs);
+    return;
+  }
+  const { bridgeCommand, bridgeArgs, outputPath } = route;
   const result = await sendBridgeRequest(bridgeCommand, bridgeArgs);
   if (outputPath) {
     writeScreenshot(result.dataUrl, outputPath);

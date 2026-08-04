@@ -61,6 +61,10 @@ if [[ ! -f "$CDP_SCRIPT" ]]; then
   exit 1
 fi
 
+if [[ "${1:-}" == "status" || "${1:-}" == "stop" ]]; then
+  exec env CDP_PORT_FILE="$PORT_FILE" node "$CDP_SCRIPT" "$@"
+fi
+
 dia_running() {
   pgrep -x "Dia" >/dev/null 2>&1
 }

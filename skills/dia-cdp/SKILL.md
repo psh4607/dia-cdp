@@ -22,6 +22,31 @@ directory, or `dia-cdp` on `PATH` when the user has installed the CLI shim.
 
 ## Commands
 
+Use the unified router by default. It chooses the extension for ordinary work
+and never starts CDP unless the command is CDP-only and `--allow-cdp` is present:
+
+```bash
+scripts/dia-browser health
+scripts/dia-browser list
+scripts/dia-browser snapshot <tab-id>
+scripts/dia-browser click <tab-id> '#save'
+scripts/dia-browser shot <tab-id> /tmp/dia.png
+```
+
+For an advanced command that genuinely needs CDP:
+
+```bash
+scripts/dia-browser --allow-cdp net <cdp-target>
+scripts/dia-browser --allow-cdp eval <cdp-target> 'document.title'
+```
+
+Inspect or stop existing CDP sessions without opening a new CDP connection:
+
+```bash
+scripts/dia-browser cdp-status
+scripts/dia-browser cdp-stop <cdp-target>
+```
+
 List Dia tabs without CDP:
 
 ```bash
@@ -90,6 +115,10 @@ scripts/dia-cdp --restart --force-kill list
   JavaScript evaluation.
 - The extension keeps its local WebSocket alive with a 20-second heartbeat and
   uses a 30-second alarm to reconnect after worker suspension or relay startup.
+- A user LaunchAgent starts the relay at login and restarts it after crashes.
+  Stable payloads synchronize on the first command after a plugin version change.
+- Approved CDP tab daemons are reused for eight hours by default. The router
+  requires `--allow-cdp` before it can start a CDP-only command.
 - A missing extension bridge is not a CDP failure. Use `dia-extension ping` to
   distinguish bridge installation from Dia remote-debugging state.
 - Runtime state lives under `~/.cache/dia-cdp`, separate from `chrome-cdp`.

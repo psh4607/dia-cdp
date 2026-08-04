@@ -18,7 +18,7 @@ describe('Dia extension package', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'extension/manifest.json'), 'utf8'));
 
     assert.equal(manifest.manifest_version, 3);
-    assert.equal(manifest.version, '0.3.1');
+    assert.equal(manifest.version, '0.4.0');
     assert.equal(extensionIdFromKey(manifest.key), 'jkijmmbnkcgjmpagmpflooolealenfkf');
     assert.equal(manifest.background.type, 'module');
     assert.deepEqual(manifest.permissions, ['tabs', 'scripting', 'alarms']);
@@ -33,6 +33,9 @@ describe('Dia extension package', () => {
     assert.match(worker, /import \{ BRIDGE_TOKEN, RELAY_ORIGIN \}/);
     assert.match(worker, /new WebSocket\(BRIDGE_URL\)/);
     assert.match(worker, /type: 'heartbeat'/);
+    assert.match(worker, /type: 'hello'/);
+    assert.match(worker, /chrome\.runtime\.getManifest\(\)\.version/);
+    assert.match(worker, /chrome\.runtime\.reload\(\)/);
     assert.match(worker, /chrome\.alarms\.create/);
     assert.match(worker, /chrome\.alarms\.onAlarm\.addListener/);
     assert.match(worker, /handleBridgeRequest\(chrome, request\)/);
@@ -46,12 +49,17 @@ describe('Dia extension package', () => {
     assert.match(host, /const MAX_BODY_BYTES = 16_777_216/);
     assert.match(host, /const REQUEST_TIMEOUT_MS = 45_000/);
     assert.doesNotMatch(host, /url\.pathname === '\/(poll|response)'/);
+    assert.match(host, /expectedExtensionVersion/);
+    assert.match(host, /type === 'hello'/);
+    assert.match(host, /type: 'reload'/);
   });
 
   it('ships executable bridge entrypoints', () => {
     for (const path of [
       'bin/dia-extension',
+      'bin/dia-browser',
       'bin/install-dia-extension-host',
+      'skills/dia-cdp/scripts/dia-browser',
       'skills/dia-cdp/scripts/dia-extension',
     ]) {
       assert.ok(statSync(resolve(root, path)).mode & 0o111, `${path} must be executable`);
@@ -74,5 +82,17 @@ describe('Dia extension package', () => {
     assert.match(installer, /copyFileSync\(resolve\(currentDir, 'extension-host\.mjs'/);
     assert.match(installer, /copyFileSync\(resolve\(currentDir, 'bridge-config\.mjs'/);
     assert.match(installer, /ensureBridgeToken\(tokenPath\)/);
+  });
+
+  it('installs a crash-restarting user LaunchAgent for the relay', () => {
+    const installer = readFileSync(resolve(root, 'src/install-native-host.mjs'), 'utf8');
+
+    assert.match(installer, /Library', 'LaunchAgents'/);
+    assert.match(installer, /com\.psh4607\.dia-cdp\.relay/);
+    assert.match(installer, /<key>RunAtLoad<\/key>/);
+    assert.match(installer, /<key>KeepAlive<\/key>/);
+    assert.match(installer, /launchctl/);
+    assert.match(installer, /bootstrap/);
+    assert.match(installer, /kickstart/);
   });
 });

@@ -5,7 +5,7 @@
 //
 // Per-tab persistent daemon: page commands go through a daemon that holds
 // the CDP session open. Dia's "Allow debugging" modal fires once per
-// daemon (= once per tab). Daemons auto-exit after 2h idle.
+// daemon (= once per tab). Daemons auto-exit after 8h idle by default.
 
 import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
@@ -16,7 +16,11 @@ import net from 'net';
 const TIMEOUT = 15000;
 const CONNECT_TIMEOUT = 12000;
 const NAVIGATION_TIMEOUT = 30000;
-const IDLE_TIMEOUT = 2 * 60 * 60 * 1000;
+const DEFAULT_IDLE_TIMEOUT = 8 * 60 * 60 * 1000;
+const configuredIdleTimeout = Number(process.env.DIA_CDP_IDLE_TIMEOUT_MS || DEFAULT_IDLE_TIMEOUT);
+const IDLE_TIMEOUT = Number.isFinite(configuredIdleTimeout) && configuredIdleTimeout > 0
+  ? configuredIdleTimeout
+  : DEFAULT_IDLE_TIMEOUT;
 const DAEMON_CONNECT_RETRIES = 20;
 const DAEMON_CONNECT_DELAY = 300;
 const MIN_TARGET_PREFIX_LEN = 8;
@@ -499,6 +503,8 @@ async function evalRawStr(cdp, sid, method, paramsJson) {
 
 async function runDaemon(targetId) {
   const sp = sockPath(targetId);
+  const startedAt = Date.now();
+  let lastActivityAt = startedAt;
 
   const cdp = new CDP();
   try {
@@ -543,6 +549,7 @@ async function runDaemon(targetId) {
   // Idle timer
   let idleTimer = setTimeout(shutdown, IDLE_TIMEOUT);
   function resetIdle() {
+    lastActivityAt = Date.now();
     clearTimeout(idleTimer);
     idleTimer = setTimeout(shutdown, IDLE_TIMEOUT);
   }
@@ -553,6 +560,15 @@ async function runDaemon(targetId) {
     try {
       let result;
       switch (cmd) {
+        case 'status':
+          result = JSON.stringify({
+            targetId,
+            pid: process.pid,
+            startedAt,
+            lastActivityAt,
+            idleTimeoutMs: IDLE_TIMEOUT,
+          });
+          break;
         case 'list': {
           const pages = await getPages(cdp);
           result = formatPageList(pages);
@@ -730,6 +746,32 @@ async function stopDaemons(targetPrefix) {
   }
 }
 
+async function statusDaemons(targetPrefix) {
+  if (!existsSync(PAGES_CACHE)) {
+    console.log('No active CDP sessions.');
+    return;
+  }
+  const pages = JSON.parse(readFileSync(PAGES_CACHE, 'utf8'));
+  const targets = targetPrefix
+    ? [resolvePrefix(targetPrefix, pages.map(p => p.targetId), 'target')]
+    : pages.map(p => p.targetId);
+  const sessions = [];
+
+  for (const targetId of targets) {
+    const sp = sockPath(targetId);
+    try {
+      const conn = await connectToSocket(sp);
+      const response = await sendCommand(conn, { cmd: 'status', args: [] });
+      if (response.ok) sessions.push(JSON.parse(response.result));
+    } catch {
+      // A missing or stale socket is not an active reusable session.
+    }
+  }
+
+  if (sessions.length === 0) console.log('No active CDP sessions.');
+  else console.log(JSON.stringify(sessions, null, 2));
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -755,6 +797,7 @@ Usage: cdp <command> [args]
                                     e.g. evalraw <t> "DOM.getDocument" '{}'
   open  [url]                       Open a new tab (default: about:blank)
                                     Note: each new tab triggers a fresh "Allow debugging?" prompt
+  status [target]                   Show active reusable daemon sessions without starting CDP
   stop  [target]                    Stop daemon(s)
 
 <target> is a unique targetId prefix from "cdp list". If a prefix is ambiguous,
@@ -785,7 +828,8 @@ DAEMON IPC (for advanced use / scripting)
            or {"id":<number>, "ok":false, "error":"<message>"}
   Commands mirror the CLI: snap, eval, shot, html, nav, net, click, clickxy,
   type, loadall, evalraw, stop. Use evalraw to send arbitrary CDP methods.
-  The socket disappears after 2 hours of inactivity or when the tab closes.
+  The socket disappears after 8 hours of inactivity or when the tab closes.
+  Override the idle duration with DIA_CDP_IDLE_TIMEOUT_MS.
 `;
 
 const NEEDS_TARGET = new Set([
@@ -811,6 +855,11 @@ async function main() {
     writeFileSync(PAGES_CACHE, JSON.stringify(pages), { mode: 0o600 });
     console.log(formatPageList(pages));
     setTimeout(() => process.exit(0), 100);
+    return;
+  }
+
+  if (cmd === 'status') {
+    await statusDaemons(args[0]);
     return;
   }
 

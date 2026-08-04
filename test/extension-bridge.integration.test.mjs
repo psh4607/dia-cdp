@@ -70,6 +70,72 @@ function requestWebSocketUpgrade({ port, token, origin }) {
 }
 
 describe('Dia extension bridge', () => {
+  it('reports relay health without waiting for the browser extension', async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-health-'));
+    temporaryDirectories.push(directory);
+    const socketPath = resolve(directory, 'bridge.sock');
+    const relayPort = await getAvailablePort();
+    const child = spawn(process.execPath, [resolve(root, 'src/extension-host.mjs')], {
+      env: {
+        ...process.env,
+        DIA_EXTENSION_RELAY_PORT: String(relayPort),
+        DIA_EXTENSION_SOCKET: socketPath,
+        DIA_EXTENSION_TOKEN: 'test-bridge-token',
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    childProcesses.push(child);
+    await waitForPath(socketPath);
+
+    const result = await sendBridgeRequest('relay.health', {}, {
+      autoStart: false,
+      socketPath,
+      timeoutMs: 500,
+    });
+
+    assert.equal(result.relay, 'running');
+    assert.equal(result.extensionConnected, false);
+    assert.equal(result.pendingRequests, 0);
+    assert.equal(typeof result.uptimeSeconds, 'number');
+  });
+
+  it('keeps the active relay socket when a duplicate instance starts', { timeout: 2_000 }, async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-singleton-'));
+    temporaryDirectories.push(directory);
+    const socketPath = resolve(directory, 'bridge.sock');
+    const relayPort = await getAvailablePort();
+    const env = {
+      ...process.env,
+      DIA_EXTENSION_RELAY_PORT: String(relayPort),
+      DIA_EXTENSION_SOCKET: socketPath,
+      DIA_EXTENSION_TOKEN: 'test-bridge-token',
+    };
+    const first = spawn(process.execPath, [resolve(root, 'src/extension-host.mjs')], {
+      env,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    childProcesses.push(first);
+    await waitForPath(socketPath);
+
+    const duplicate = spawn(process.execPath, [resolve(root, 'src/extension-host.mjs')], {
+      env,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    childProcesses.push(duplicate);
+    const duplicateExit = await Promise.race([
+      new Promise((resolveExit) => duplicate.once('exit', resolveExit)),
+      delay(750).then(() => 'timeout'),
+    ]);
+
+    assert.notEqual(duplicateExit, 'timeout');
+    const result = await sendBridgeRequest('relay.health', {}, {
+      autoStart: false,
+      socketPath,
+      timeoutMs: 500,
+    });
+    assert.equal(result.relay, 'running');
+  });
+
   it('relays a CLI request through the loopback WebSocket and back', async () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-bridge-'));
     temporaryDirectories.push(directory);
@@ -122,6 +188,44 @@ describe('Dia extension bridge', () => {
     socket.close();
 
     assert.deepEqual(result, [{ id: 7, title: 'Dia', url: 'https://example.com/' }]);
+  });
+
+  it('asks an outdated extension worker to reload the synced payload', { timeout: 1_000 }, async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'dia-extension-version-'));
+    temporaryDirectories.push(directory);
+    const socketPath = resolve(directory, 'bridge.sock');
+    const relayPort = await getAvailablePort();
+    const token = 'test-bridge-token';
+    const child = spawn(process.execPath, [resolve(root, 'src/extension-host.mjs')], {
+      env: {
+        ...process.env,
+        DIA_EXTENSION_RELAY_PORT: String(relayPort),
+        DIA_EXTENSION_SOCKET: socketPath,
+        DIA_EXTENSION_TOKEN: token,
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    childProcesses.push(child);
+    await waitForPath(socketPath);
+
+    const socket = new WebSocket(`ws://127.0.0.1:${relayPort}/bridge?token=${token}`);
+    await new Promise((resolveOpen, reject) => {
+      socket.addEventListener('open', resolveOpen, { once: true });
+      socket.addEventListener('error', reject, { once: true });
+    });
+    const reload = new Promise((resolveReload, reject) => {
+      socket.addEventListener('message', (event) => {
+        try {
+          resolveReload(JSON.parse(event.data));
+        } catch (error) {
+          reject(error);
+        }
+      }, { once: true });
+    });
+    socket.send(JSON.stringify({ type: 'hello', version: '0.0.0' }));
+
+    assert.deepEqual(await reload, { type: 'reload' });
+    socket.close();
   });
 
   it('rejects WebSocket upgrades without the bridge token', async () => {
